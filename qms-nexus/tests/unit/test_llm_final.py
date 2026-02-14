@@ -1,5 +1,5 @@
 """
-简化版单元测试：core/llm.py 流式/非流式 + 热切换
+单元测试：core/llm.py 流式/非流式 + 热切换
 """
 import pytest
 from unittest.mock import AsyncMock, patch
