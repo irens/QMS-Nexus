@@ -1,0 +1,24 @@
+company:
+  name: "ACME医疗"
+  product: "一次性输液器"
+  industry: "医疗器械"
+
+tag_pool:
+  - 设计文档
+  - 风险分析
+  - 检验规范
+  - 客户投诉
+
+embedding:
+  model: "BAAI/bge-small-zh-v1.5"
+  dim: 512
+  chunk_size: 800
+  overlap: 100
+
+parser:
+  rules:
+    - mime: "application/pdf"
+      engine: "mineru"
+    - mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      engine: "unstructured"
+      options: { table_as_markdown: true }
