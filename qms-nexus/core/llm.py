@@ -53,7 +53,7 @@ class LLMClient:
         }
         resp = await self.client.post("/chat/completions", json=payload)
         resp.raise_for_status()
-        data = resp.json()
+        data = await resp.json()
         return data["choices"][0]["message"]["content"]
 
     async def chat_stream(

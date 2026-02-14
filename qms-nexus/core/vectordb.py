@@ -43,16 +43,20 @@ class VectorDBClient:
         coll = self._get_collection(collection)
         ids = [c.id or str(uuid.uuid4()) for c in chunks]
         texts = [c.text for c in chunks]
-        metas = [
-            {
+        def _build_meta(c: Chunk) -> dict:
+            meta = {
                 "filename": c.metadata.get("filename"),
                 "page": c.page,
                 "table": c.table,
-                "tags": c.metadata.get("tags", []),
                 **c.metadata,
             }
-            for c in chunks
-        ]
+            # ChromaDB 不允许空 list，仅在有标签时写入
+            tags = c.metadata.get("tags")
+            if tags:
+                meta["tags"] = tags
+            return meta
+
+        metas = [_build_meta(c) for c in chunks]
         coll.upsert(ids=ids, documents=texts, metadatas=metas)
         return ids
 
