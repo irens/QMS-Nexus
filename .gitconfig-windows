@@ -1,0 +1,33 @@
+# QMS-Nexus Windows环境配置文件
+# 此文件确保Trae在Windows环境下使用正确的命令风格
+
+[core]
+    # Git配置优化
+    autocrlf = true
+    safecrlf = warn
+    editor = notepad
+    
+[format]
+    # 提交信息格式
+    commitMessageColumns = 72
+    
+[alias]
+    # Windows友好的Git别名
+    st = status
+    co = checkout
+    br = branch
+    cm = commit -m
+    cf = commit -F
+    lg = log --oneline -n 10 --no-pager
+    
+[help]
+    # 自动纠正拼写错误
+    autocorrect = 1
+    
+[push]
+    # 默认推送策略
+    default = simple
+    
+[pull]
+    # 拉取策略
+    rebase = false
