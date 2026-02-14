@@ -3,6 +3,7 @@
 """
 import asyncio
 import uuid
+import time
 from pathlib import Path
 from typing import Dict
 
@@ -10,6 +11,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
 from services.document_service import DocumentService
+from core.metrics import upload_counter, upload_duration
 
 router = APIRouter()
 svc = DocumentService()
@@ -26,6 +28,8 @@ class UploadResponse(BaseModel):
 @router.post("/upload", response_model=UploadResponse)
 async def upload(file: UploadFile = File(...)):
     """上传单文件，≤50 MB，即刻返回任务 ID。"""
+    t0 = time.time()
+    status = "ok"
     # 基础校验
     if not file.content_type:
         raise HTTPException(status_code=400, detail="缺少 Content-Type")
@@ -51,4 +55,16 @@ async def upload(file: UploadFile = File(...)):
     # 后台解析（阶段三换 Redis+Worker）
     asyncio.create_task(svc.process(task_id, file_path, file.content_type))
 
+    cost = time.time() - t0
+    upload_duration.observe(cost)
+    upload_counter.labels(status=status).inc()
     return UploadResponse(task_id=task_id, status="Pending")
+
+
+@router.get("/upload/status/{task_id}", response_model=UploadResponse)
+def get_status(task_id: str):
+    """查询任务状态"""
+    t = tasks.get(task_id)
+    if not t:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    return UploadResponse(task_id=task_id, status=t["status"])

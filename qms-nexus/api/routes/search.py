@@ -1,12 +1,14 @@
 """
 检索接口：支持 ?q=&filter_tags=
 """
+import time
 from typing import List, Optional
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from core.vectordb import VectorDBClient
+from core.metrics import search_counter, search_duration
 
 router = APIRouter()
 client = VectorDBClient()
@@ -26,7 +28,16 @@ async def search(
     top_k: int = Query(5, ge=1, le=100),
 ):
     """语义检索，返回带标签的结果。"""
-    results = await client.similarity_search(q, top_k=top_k, filter_tags=filter_tags)
+    t0 = time.time()
+    status = "ok"
+    try:
+        results = await client.similarity_search(q, top_k=top_k, filter_tags=filter_tags)
+    except Exception:
+        status = "error"
+        raise
+    finally:
+        search_duration.observe(time.time() - t0)
+        search_counter.labels(status=status).inc()
     return [
         SearchResult(
             text=r.text,

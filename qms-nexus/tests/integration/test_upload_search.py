@@ -63,3 +63,25 @@ def test_excel_upload_then_search():
     assert len(results) > 0
     assert "检验规范" in results[0]["text"]
     assert "test.xlsx" in results[0]["source"]
+
+
+def test_upload_poll_until_completed():
+    """上传 → 轮询状态直到 Completed"""
+    pdf_content = b"%PDF-1.4\n" + "设计开发".encode("utf-8") * 100
+    files = {"file": ("poll.pdf", io.BytesIO(pdf_content), "application/pdf")}
+    resp = client.post("/upload", files=files)
+    assert resp.status_code == 200
+    task_id = resp.json()["task_id"]
+
+    # 轮询状态，最多 30 秒
+    for _ in range(60):
+        r = client.get(f"/upload/status/{task_id}")
+        assert r.status_code == 200
+        status = r.json()["status"]
+        if status == "Completed":
+            break
+        if status == "Failed":
+            pytest.fail("任务失败")
+        time.sleep(0.5)
+    else:
+        pytest.fail("超时未 Completed")

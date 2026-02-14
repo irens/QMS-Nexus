@@ -10,6 +10,9 @@ from api.routes.upload import router as upload_router
 from api.routes.search import router as search_router
 from api.routes.tags import router as tags_router
 from core.rag_service import RAGService
+from core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AskRequest(BaseModel):
@@ -40,3 +43,10 @@ async def ask(req: AskRequest):
         return AskResponse(answer=answer, sources=sources)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/metrics")
+def metrics():
+    """Prometheus 指标暴露"""
+    from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+    return generate_latest()

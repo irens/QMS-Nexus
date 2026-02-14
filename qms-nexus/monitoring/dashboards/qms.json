@@ -1,0 +1,43 @@
+{
+  "dashboard": {
+    "title": "QMS-Nexus 监控",
+    "panels": [
+      {
+        "title": "上传总次数",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(qms_upload_total)"
+          }
+        ]
+      },
+      {
+        "title": "检索总次数",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "sum(qms_search_total)"
+          }
+        ]
+      },
+      {
+        "title": "上传延迟 95%",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, qms_upload_duration_seconds_bucket)"
+          }
+        ]
+      },
+      {
+        "title": "检索延迟 95%",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, qms_search_duration_seconds_bucket)"
+          }
+        ]
+      }
+    ]
+  }
+}
