@@ -1,0 +1,121 @@
+# 依赖目录
+node_modules/
+qms-nexus-frontend/node_modules/
+
+# 临时文件和上传文件
+qms-nexus/tmp_uploads/
+qms-nexus/vectorstore/
+*.tmp
+*.temp
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# 编辑器目录和文件
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# 测试覆盖率
+coverage/
+*.lcov
+.nyc_output
+
+# 构建输出
+dist/
+build/
+*.tsbuildinfo
+
+# 本地存储
+*.local
+.qa-result.json
+
+# Trae 相关（保留 specs，但排除临时文件）
+.trae/temp/
+.trae/cache/
+
+# 证书和密钥
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# OS 生成的文件
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# 备份文件
+*.bak
+*.backup
+*.swp
+*~
+
+# 调试文件
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# 运行时数据
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# 项目特定的忽略规则
+qms-nexus/tmp_uploads/
+qms-nexus/vectorstore/
+qms-nexus/__pycache__/
+qms-nexus/api/__pycache__/
+qms-nexus/core/__pycache__/
+qms-nexus/services/__pycache__/
+qms-nexus/tests/__pycache__/
+qms-nexus/tests/.pytest_cache/
+qms-nexus/tests/integration/__pycache__/
+qms-nexus/tests/integration/.pytest_cache/
+qms-nexus/.pytest_cache/
