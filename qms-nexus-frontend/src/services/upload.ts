@@ -24,7 +24,7 @@ export class UploadService {
    * @returns 任务状态信息
    */
   async getTaskStatus(taskId: string): Promise<UploadTask> {
-    return apiClient.get<UploadTask>(`/tasks/${taskId}`)
+    return apiClient.get<UploadTask>(`/upload/status/${taskId}`)
   }
   
   /**
