@@ -1,0 +1,192 @@
+{
+  "generated_at": "2026-02-15T12:40:45.440969",
+  "normal_documents": [
+    {
+      "filename": "员工培训材料_20260215_124045.pptx",
+      "type": "pptx",
+      "size": 79766,
+      "keywords": [
+        "培训记录",
+        "供应商管理",
+        "灭菌验证"
+      ],
+      "title": "员工培训材料"
+    },
+    {
+      "filename": "标准操作程序_20260215_124045.docx",
+      "type": "docx",
+      "size": 103778,
+      "keywords": [
+        "生物相容性",
+        "临床评价",
+        "SOP文件"
+      ],
+      "title": "标准操作程序"
+    },
+    {
+      "filename": "标准操作程序_20260215_124045.docx",
+      "type": "docx",
+      "size": 40850,
+      "keywords": [
+        "检验规范",
+        "校准管理",
+        "灭菌验证"
+      ],
+      "title": "标准操作程序"
+    },
+    {
+      "filename": "质量管理手册_20260215_124045.pdf",
+      "type": "pdf",
+      "size": 55689,
+      "keywords": [
+        "风险控制",
+        "ISO 13485",
+        "供应商管理"
+      ],
+      "title": "质量管理手册"
+    },
+    {
+      "filename": "检验记录表_20260215_124045.xlsx",
+      "type": "xlsx",
+      "size": 55340,
+      "keywords": [
+        "灭菌验证",
+        "ISO 13485",
+        "校准管理"
+      ],
+      "title": "检验记录表"
+    },
+    {
+      "filename": "标准操作程序_20260215_124045.docx",
+      "type": "docx",
+      "size": 75074,
+      "keywords": [
+        "使用说明",
+        "召回管理",
+        "生物相容性"
+      ],
+      "title": "标准操作程序"
+    },
+    {
+      "filename": "员工培训材料_20260215_124045.pptx",
+      "type": "pptx",
+      "size": 33526,
+      "keywords": [
+        "检验规范",
+        "召回管理",
+        "生物相容性"
+      ],
+      "title": "员工培训材料"
+    },
+    {
+      "filename": "检验记录表_20260215_124045.xlsx",
+      "type": "xlsx",
+      "size": 54137,
+      "keywords": [
+        "质量管理",
+        "风险控制",
+        "使用说明"
+      ],
+      "title": "检验记录表"
+    },
+    {
+      "filename": "标准操作程序_20260215_124045.docx",
+      "type": "docx",
+      "size": 103778,
+      "keywords": [
+        "质量管理",
+        "标签要求",
+        "CAPA"
+      ],
+      "title": "标准操作程序"
+    },
+    {
+      "filename": "标准操作程序_20260215_124045.docx",
+      "type": "docx",
+      "size": 72866,
+      "keywords": [
+        "校准管理",
+        "使用说明",
+        "不良事件"
+      ],
+      "title": "标准操作程序"
+    },
+    {
+      "filename": "检验记录表_20260215_124045.xlsx",
+      "type": "xlsx",
+      "size": 85415,
+      "keywords": [
+        "不良事件",
+        "ISO 13485",
+        "培训记录"
+      ],
+      "title": "检验记录表"
+    },
+    {
+      "filename": "质量管理手册_20260215_124045.pdf",
+      "type": "pdf",
+      "size": 123561,
+      "keywords": [
+        "召回管理",
+        "使用说明",
+        "不良事件"
+      ],
+      "title": "质量管理手册"
+    },
+    {
+      "filename": "质量管理手册_20260215_124045.pdf",
+      "type": "pdf",
+      "size": 46842,
+      "keywords": [
+        "临床评价",
+        "供应商管理",
+        "标签要求"
+      ],
+      "title": "质量管理手册"
+    },
+    {
+      "filename": "标准操作程序_20260215_124045.docx",
+      "type": "docx",
+      "size": 66242,
+      "keywords": [
+        "SOP文件",
+        "召回管理",
+        "培训记录"
+      ],
+      "title": "标准操作程序"
+    },
+    {
+      "filename": "质量管理手册_20260215_124045.pdf",
+      "type": "pdf",
+      "size": 91912,
+      "keywords": [
+        "风险控制",
+        "标签要求",
+        "供应商管理"
+      ],
+      "title": "质量管理手册"
+    }
+  ],
+  "edge_case_files": [
+    "empty_pdf",
+    "small_pdf",
+    "medium_pdf",
+    "large_pdf",
+    "oversized_pdf",
+    "invalid_pdf",
+    "corrupted_pdf",
+    "txt_file",
+    "exe_file",
+    "script_file"
+  ],
+  "test_scenarios": [
+    "正常文件上传测试",
+    "大文件上传测试",
+    "不支持格式上传测试",
+    "网络中断重试测试",
+    "并发上传测试",
+    "文件解析测试",
+    "搜索功能测试",
+    "问答功能测试"
+  ]
+}

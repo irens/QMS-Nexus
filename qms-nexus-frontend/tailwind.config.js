@@ -4,6 +4,9 @@ export default {
     "./index.html",
     "./src/**/*.{vue,js,ts,jsx,tsx}",
   ],
+  corePlugins: {
+    preflight: false, // 禁用Tailwind的基础样式，避免与Element Plus冲突
+  },
   theme: {
     extend: {
       colors: {

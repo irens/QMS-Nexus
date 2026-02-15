@@ -1,472 +1,566 @@
 <template>
-  <div class="p-6">
-    <div class="mb-6">
+  <div class="upload-container">
+    <!-- 页面标题 -->
+    <div class="page-header">
       <h1 class="text-2xl font-bold text-gray-800 mb-2">文件上传</h1>
-      <p class="text-gray-600">支持 PDF、DOC、DOCX、XLS、XLSX、PPT、PPTX 格式</p>
+      <p class="text-gray-600">支持 PDF、DOC、DOCX、XLS、XLSX、PPT、PPTX 格式，单个文件不超过 50MB</p>
     </div>
 
-    <!-- 上传区域 -->
-    <div class="mb-8">
-      <el-upload
-        ref="uploadRef"
-        class="upload-demo"
-        drag
-        :action="uploadAction"
-        :headers="uploadHeaders"
-        :data="uploadData"
-        :multiple="true"
-        :limit="10"
-        :file-list="fileList"
-        :accept="acceptFileTypes"
-        :before-upload="beforeUpload"
-        :on-progress="handleProgress"
-        :on-success="handleSuccess"
-        :on-error="handleError"
-        :on-remove="handleRemove"
-        :on-exceed="handleExceed"
-        :auto-upload="false"
+    <!-- 拖拽上传区域 -->
+    <div class="upload-area mb-8">
+      <div 
+        class="upload-dropzone"
+        :class="{ 
+          'is-dragover': isDragOver,
+          'is-uploading': isUploading 
+        }"
+        @drop="handleDrop"
+        @dragover="handleDragOver"
+        @dragleave="handleDragLeave"
+        @click="triggerFileSelect"
       >
-        <el-icon class="el-icon--upload" size="48"><upload-filled /></el-icon>
-        <div class="el-upload__text">
-          拖拽文件到此处或 <em>点击上传</em>
-        </div>
-        <template #tip>
-          <div class="el-upload__tip">
-            <p class="text-sm text-gray-500 mb-2">
+        <div class="upload-content">
+          <el-icon class="upload-icon" size="64">
+            <UploadFilled />
+          </el-icon>
+          <div class="upload-text">
+            <p class="upload-title">拖拽文件到此处上传</p>
+            <p class="upload-subtitle">或者 <em>点击选择文件</em></p>
+          </div>
+          <div class="upload-info">
+            <p class="text-sm text-gray-500">
               支持格式：PDF、DOC、DOCX、XLS、XLSX、PPT、PPTX
             </p>
             <p class="text-sm text-gray-500">
-              单个文件不超过 50MB，最多可同时上传 10 个文件
+              单个文件不超过 50MB，最多可同时上传 {{ maxConcurrentFiles }} 个文件
             </p>
           </div>
-        </template>
-      </el-upload>
+        </div>
+        <input
+          ref="fileInputRef"
+          type="file"
+          multiple
+          :accept="acceptFileTypes"
+          @change="handleFileSelect"
+          class="file-input"
+        />
+      </div>
 
-      <!-- 上传按钮 -->
-      <div class="mt-4 flex justify-center space-x-4">
+      <!-- 上传控制按钮 -->
+      <div class="upload-controls" v-if="hasFiles">
         <el-button 
           type="primary" 
-          @click="submitUpload"
+          @click="startUpload"
           :loading="isUploading"
-          :disabled="fileList.length === 0"
+          :disabled="!canStartUpload"
+          size="large"
         >
           <el-icon class="mr-2"><Upload /></el-icon>
-          开始上传
+          开始上传 ({{ pendingFilesCount }})
         </el-button>
         <el-button 
-          @click="clearFiles"
-          :disabled="fileList.length === 0"
+          @click="clearAllFiles"
+          :disabled="!hasFiles || isUploading"
+          size="large"
         >
           清空列表
         </el-button>
       </div>
     </div>
 
-    <!-- 上传状态列表 -->
-    <div v-if="uploadTasks.length > 0" class="mb-8">
-      <h3 class="text-lg font-medium text-gray-800 mb-4">上传进度</h3>
-      <div class="space-y-4">
+    <!-- 上传文件列表 -->
+    <div class="upload-files-section" v-if="hasFiles">
+      <div class="section-header">
+        <h3 class="text-lg font-medium text-gray-800">上传文件列表</h3>
+        <div class="file-stats">
+          <span class="text-sm text-gray-500">
+            总计 {{ totalFiles }} 个文件，{{ formatFileSize(totalSize) }}
+          </span>
+        </div>
+      </div>
+
+      <div class="files-list">
         <div 
-          v-for="task in uploadTasks" 
-          :key="task.taskId"
-          class="bg-white rounded-lg border border-gray-200 p-4"
+          v-for="file in uploadFiles" 
+          :key="file.id"
+          class="file-item"
+          :class="getFileItemClass(file)"
         >
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center space-x-3">
-              <el-icon size="20" :class="getFileIconColor(task.fileName)">
-                <component :is="getFileIcon(getFileType(task.fileName))" />
-              </el-icon>
-              <div>
-                <p class="text-sm font-medium text-gray-800">{{ task.fileName }}</p>
-                <p class="text-xs text-gray-500">{{ formatFileSize(task.fileSize) }}</p>
-              </div>
+          <!-- 文件图标 -->
+          <div class="file-icon">
+            <el-icon :size="32" :color="getFileColor(file.file.name)">
+              <component :is="getFileIcon(file.file.name)" />
+            </el-icon>
+          </div>
+
+          <!-- 文件信息 -->
+          <div class="file-info">
+            <div class="file-name">{{ file.file.name }}</div>
+            <div class="file-meta">
+              <span class="file-size">{{ formatFileSize(file.file.size) }}</span>
+              <span class="file-type">{{ getFileExtension(file.file.name).toUpperCase() }}</span>
             </div>
-            <div class="flex items-center space-x-2">
-              <el-tag 
-                :type="getUploadStatusType(task.status) as any" 
-                size="small"
-                class="capitalize"
-              >
-                {{ getUploadStatusText(task.status) }}
-              </el-tag>
-              <el-button
-                v-if="task.status === 'failed'"
-                type="primary"
-                link
-                size="small"
-                @click="retryUpload(task)"
-              >
-                重试
-              </el-button>
+            <div v-if="file.error" class="file-error">
+              <el-icon size="12"><Warning /></el-icon>
+              {{ file.error }}
             </div>
           </div>
 
-          <!-- 进度条 -->
-          <div v-if="task.status === 'uploading' || task.status === 'processing'" class="mb-2">
-            <el-progress 
-              :percentage="task.progress" 
-              :status="getProgressStatus(task.status)"
-              :stroke-width="8"
-              :text-inside="true"
+          <!-- 进度显示 -->
+          <div class="file-progress" v-if="file.status !== 'pending'">
+            <el-progress
+              :percentage="file.progress"
+              :status="getProgressStatus(file.status)"
+              :stroke-width="6"
+              :show-text="file.status !== 'processing'"
             />
+            <div v-if="file.currentStep" class="progress-step">
+              {{ file.currentStep }}
+            </div>
+            <div v-if="file.estimatedTime" class="progress-time">
+              预计剩余时间: {{ formatDuration(file.estimatedTime) }}
+            </div>
           </div>
 
-          <!-- 状态信息 -->
-          <div v-if="task.statusMessage" class="text-xs text-gray-600">
-            {{ task.statusMessage }}
+          <!-- 状态标签 -->
+          <div class="file-status">
+            <el-tag 
+              :type="getStatusType(file.status) as any" 
+              size="small"
+              :effect="file.status === 'completed' ? 'light' : 'plain'"
+            >
+              <el-icon v-if="file.status === 'uploading' || file.status === 'processing'" size="12" class="animate-spin">
+                <Loading />
+              </el-icon>
+              {{ getStatusText(file.status) }}
+            </el-tag>
           </div>
 
-          <!-- 错误信息 -->
-          <div v-if="task.error" class="text-xs text-red-600 mt-2">
-            {{ task.error }}
+          <!-- 操作按钮 -->
+          <div class="file-actions">
+            <el-button
+              v-if="file.status === 'failed'"
+              type="primary"
+              link
+              size="small"
+              @click="retryFile(file)"
+            >
+              重试
+            </el-button>
+            <el-button
+              v-if="file.status === 'pending' || file.status === 'failed'"
+              type="danger"
+              link
+              size="small"
+              @click="removeFile(file)"
+            >
+              删除
+            </el-button>
+            <el-button
+              v-if="file.status === 'completed' && file.result?.documentId"
+              type="primary"
+              link
+              size="small"
+              @click="viewDocument(file)"
+            >
+              查看
+            </el-button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- 上传历史 -->
-    <div>
-      <h3 class="text-lg font-medium text-gray-800 mb-4">最近上传</h3>
-      <el-table :data="uploadHistory" style="width: 100%">
-        <el-table-column prop="fileName" label="文件名" min-width="200">
+    <div class="upload-history-section" v-if="completedUploads.length > 0">
+      <div class="section-header">
+        <h3 class="text-lg font-medium text-gray-800">上传历史</h3>
+        <el-button 
+          type="primary" 
+          link 
+          size="small"
+          @click="clearHistory"
+        >
+          清空历史
+        </el-button>
+      </div>
+
+      <el-table :data="completedUploads" style="width: 100%" stripe>
+        <el-table-column label="文件" min-width="250">
           <template #default="{ row }">
-            <div class="flex items-center space-x-2">
-              <el-icon size="16" :class="getFileIconColor(row.fileName)">
-                <component :is="getFileIcon(getFileType(row.fileName))" />
+            <div class="flex items-center space-x-3">
+              <el-icon :size="24" :color="getFileColor(row.file.name)">
+                <component :is="getFileIcon(row.file.name)" />
               </el-icon>
-              <span class="text-sm">{{ row.fileName }}</span>
+              <div>
+                <div class="text-sm font-medium">{{ row.file.name }}</div>
+                <div class="text-xs text-gray-500">{{ formatFileSize(row.file.size) }}</div>
+              </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="fileSize" label="大小" width="100">
-          <template #default="{ row }">
-            {{ formatFileSize(row.fileSize) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="100">
+
+        <el-table-column label="状态" width="120">
           <template #default="{ row }">
             <el-tag 
-              :type="getUploadStatusType(row.status) as any" 
+              :type="getStatusType(row.status) as any" 
               size="small"
-              class="capitalize"
+              effect="light"
             >
-              {{ getUploadStatusText(row.status) }}
+              {{ getStatusText(row.status) }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="uploadTime" label="上传时间" width="150" />
-        <el-table-column label="操作" width="120">
+
+        <el-table-column label="完成时间" width="180">
           <template #default="{ row }">
-            <el-button
-              v-if="row.status === 'completed'"
-              type="primary"
-              link
-              size="small"
-              @click="viewDocument(row)"
-            >
-              查看
-            </el-button>
-            <el-button
-              type="danger"
-              link
-              size="small"
-              @click="deleteHistory(row)"
-            >
-              删除
-            </el-button>
+            <div class="text-sm">{{ formatDateTime(row.completedAt) }}</div>
+          </template>
+        </el-table-column>
+
+        <el-table-column label="操作" width="150" fixed="right">
+          <template #default="{ row }">
+            <div class="flex space-x-2">
+              <el-button
+                v-if="row.result?.documentId"
+                type="primary"
+                link
+                size="small"
+                @click="viewDocument(row)"
+              >
+                查看文档
+              </el-button>
+              <el-button
+                type="danger"
+                link
+                size="small"
+                @click="deleteHistoryItem(row)"
+              >
+                删除
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
+    </div>
+
+    <!-- 空状态 -->
+    <div v-if="!hasFiles && completedUploads.length === 0" class="empty-state">
+      <el-icon size="64" class="text-gray-300 mb-4">
+        <UploadFilled />
+      </el-icon>
+      <p class="text-gray-500 mb-2">还没有上传任何文件</p>
+      <p class="text-sm text-gray-400">拖拽文件到上方区域或点击选择文件开始上传</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import type { UploadProps, UploadUserFile } from 'element-plus'
+import { ref, computed, onMounted } from 'vue'
+import { ElMessageBox } from 'element-plus'
+import { useUploadStore } from '@/stores/upload'
+import { useSystemStore } from '@/stores/system'
+import { formatFileSize, formatDateTime, formatDuration } from '@/utils/format'
+import { getFileExtension, getFileIcon, getFileColor, validateFileType, validateFileSize } from '@/utils/file'
+import type { UploadFile as UploadFileType } from '@/types/api'
+
+// 图标导入
 import {
   UploadFilled,
   Upload,
-  Document,
-  DocumentCopy,
-  Tickets,
-  Notebook
+  Warning,
+  Loading
 } from '@element-plus/icons-vue'
 
-interface UploadTask {
-  taskId: string
-  fileName: string
-  fileSize: number
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed'
-  progress: number
-  statusMessage: string
-  error?: string
-}
+// Store
+const uploadStore = useUploadStore()
+const systemStore = useSystemStore()
 
-interface UploadHistoryItem {
-  id: string
-  fileName: string
-  fileSize: number
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed'
-  uploadTime: string
-}
-
-// 文件类型配置
+// 常量
 const acceptFileTypes = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx'
 const maxFileSize = 50 * 1024 * 1024 // 50MB
+const maxConcurrentFiles = 10
 
-// 上传相关状态
-const uploadRef = ref()
-const fileList = ref<UploadUserFile[]>([])
-const isUploading = ref(false)
-const uploadTasks = reactive<UploadTask[]>([])
-const uploadHistory = ref<UploadHistoryItem[]>([
-  {
-    id: '1',
-    fileName: '医疗质量管理规范.pdf',
-    fileSize: 2345678,
-    status: 'completed',
-    uploadTime: '2024-01-15 14:30'
-  },
-  {
-    id: '2',
-    fileName: '2024年度质量报告.docx',
-    fileSize: 1876543,
-    status: 'completed',
-    uploadTime: '2024-01-15 10:15'
-  },
-  {
-    id: '3',
-    fileName: '质量指标统计表.xlsx',
-    fileSize: 856432,
-    status: 'completed',
-    uploadTime: '2024-01-14 16:45'
-  }
-])
+// Refs
+const fileInputRef = ref<HTMLInputElement>()
+const isDragOver = ref(false)
 
-// 上传配置
-const uploadAction = '/api/upload'
-const uploadHeaders = {
-  'Authorization': 'Bearer ' + localStorage.getItem('token')
-}
-const uploadData = {
-  userId: '1'
+// 计算属性
+const uploadFiles = computed(() => uploadStore.uploadQueue)
+const completedUploads = computed(() => uploadStore.completedUploads)
+const isUploading = computed(() => uploadStore.isUploading)
+
+const hasFiles = computed(() => uploadFiles.value.length > 0)
+const pendingFilesCount = computed(() => uploadStore.pendingUploads.length)
+const canStartUpload = computed(() => hasFiles.value && !isUploading.value && pendingFilesCount.value > 0)
+
+const totalFiles = computed(() => uploadFiles.value.length)
+const totalSize = computed(() => 
+  uploadFiles.value.reduce((sum, file) => sum + file.file.size, 0)
+)
+
+// 生命周期
+onMounted(() => {
+  // 可以在这里加载上传历史
+})
+
+// 拖拽处理
+const handleDragOver = (e: DragEvent) => {
+  e.preventDefault()
+  isDragOver.value = true
 }
 
-// 文件上传前检查
-const beforeUpload: UploadProps['beforeUpload'] = (file) => {
-  // 检查文件类型
-  const fileType = file.name.split('.').pop()?.toLowerCase()
-  const allowedTypes = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']
+const handleDragLeave = () => {
+  isDragOver.value = false
+}
+
+const handleDrop = (e: DragEvent) => {
+  e.preventDefault()
+  isDragOver.value = false
   
-  if (!fileType || !allowedTypes.includes(fileType)) {
-    ElMessage.error('不支持的文件格式')
-    return false
-  }
-
-  // 检查文件大小
-  if (file.size > maxFileSize) {
-    ElMessage.error('文件大小不能超过 50MB')
-    return false
-  }
-
-  return true
-}
-
-// 处理上传进度
-const handleProgress: UploadProps['onProgress'] = (event, file) => {
-  const task = uploadTasks.find(t => t.fileName === file.name)
-  if (task) {
-    task.status = 'uploading'
-    task.progress = Math.round(event.percent)
-    task.statusMessage = `上传中... ${task.progress}%`
+  const files = e.dataTransfer?.files
+  if (files && files.length > 0) {
+    processFiles(Array.from(files))
   }
 }
 
-// 处理上传成功
-const handleSuccess: UploadProps['onSuccess'] = (_response, file) => {
-  const task = uploadTasks.find(t => t.fileName === file.name)
-  if (task) {
-    task.status = 'processing'
-    task.progress = 100
-    task.statusMessage = '文件解析中...'
-    
-    // 模拟解析过程
-    setTimeout(() => {
-      task.status = 'completed'
-      task.statusMessage = '上传完成'
-      
-      // 添加到历史记录
-      uploadHistory.value.unshift({
-        id: Date.now().toString(),
-        fileName: file.name,
-        fileSize: file.size || 0,
-        status: 'completed',
-        uploadTime: new Date().toLocaleString('zh-CN')
-      })
-      
-      ElMessage.success('文件上传成功')
-    }, 3000)
-  }
+// 文件选择
+const triggerFileSelect = () => {
+  fileInputRef.value?.click()
 }
 
-// 处理上传失败
-const handleError: UploadProps['onError'] = (error, file) => {
-  const task = uploadTasks.find(t => t.fileName === file.name)
-  if (task) {
-    task.status = 'failed'
-    task.error = error.message || '上传失败'
-    task.statusMessage = '上传失败'
+const handleFileSelect = (e: Event) => {
+  const target = e.target as HTMLInputElement
+  const files = target.files
+  if (files && files.length > 0) {
+    processFiles(Array.from(files))
   }
-  ElMessage.error('文件上传失败')
-}
-
-// 处理文件移除
-const handleRemove: UploadProps['onRemove'] = (file) => {
-  const index = uploadTasks.findIndex(t => t.fileName === file.name)
-  if (index > -1) {
-    uploadTasks.splice(index, 1)
-  }
-}
-
-// 处理文件超出限制
-const handleExceed: UploadProps['onExceed'] = () => {
-  ElMessage.warning('最多只能上传 10 个文件')
-}
-
-// 开始上传
-const submitUpload = () => {
-  if (fileList.value.length === 0) {
-    ElMessage.warning('请先选择文件')
-    return
-  }
-
-  isUploading.value = true
   
-  // 创建上传任务
-  fileList.value.forEach(file => {
-    const task: UploadTask = {
-      taskId: Date.now().toString() + Math.random(),
-      fileName: file.name,
-      fileSize: file.size || 0,
-      status: 'pending',
-      progress: 0,
-      statusMessage: '等待上传'
+  // 清空input，允许重复选择相同文件
+  if (target.value) {
+    target.value = ''
+  }
+}
+
+// 处理文件
+const processFiles = (files: File[]) => {
+  // 检查文件数量限制
+  if (files.length > maxConcurrentFiles) {
+    systemStore.addNotification({
+      type: 'warning',
+      title: '文件数量过多',
+      message: `一次最多只能上传 ${maxConcurrentFiles} 个文件`,
+      read: false
+    })
+    files = files.slice(0, maxConcurrentFiles)
+  }
+  
+  // 验证每个文件
+  const validFiles: File[] = []
+  const invalidFiles: string[] = []
+  
+  files.forEach(file => {
+    // 验证文件类型
+    if (!validateFileType(file, acceptFileTypes.split(','))) {
+      invalidFiles.push(`${file.name}: 不支持的文件格式`)
+      return
     }
-    uploadTasks.push(task)
+    
+    // 验证文件大小
+    if (!validateFileSize(file, maxFileSize)) {
+      invalidFiles.push(`${file.name}: 文件大小超过50MB限制`)
+      return
+    }
+    
+    validFiles.push(file)
   })
-
-  // 开始上传
-  uploadRef.value?.submit()
   
-  setTimeout(() => {
-    isUploading.value = false
-  }, 1000)
-}
-
-// 清空文件列表
-const clearFiles = () => {
-  fileList.value = []
-  uploadTasks.length = 0
-  uploadRef.value?.clearFiles()
-}
-
-// 重试上传
-const retryUpload = (task: UploadTask) => {
-  task.status = 'pending'
-  task.progress = 0
-  task.statusMessage = '等待重试'
-  task.error = undefined
-  
-  // 重新添加到文件列表
-  const file = fileList.value.find(f => f.name === task.fileName)
-  if (file) {
-    setTimeout(() => {
-      // 模拟重试上传
-      task.status = 'uploading'
-      task.progress = 50
-      task.statusMessage = '重新上传中...'
-      
-      setTimeout(() => {
-        task.status = 'completed'
-        task.progress = 100
-        task.statusMessage = '上传完成'
-        ElMessage.success('文件重传成功')
-      }, 2000)
-    }, 1000)
+  // 显示无效文件警告
+  if (invalidFiles.length > 0) {
+    systemStore.addNotification({
+      type: 'warning',
+      title: '部分文件无法上传',
+      message: invalidFiles.join('；'),
+      read: false
+    })
   }
-}
-
-// 查看文档
-const viewDocument = (row: UploadHistoryItem) => {
-  ElMessage.info(`查看文档: ${row.fileName}`)
-}
-
-// 删除历史记录
-const deleteHistory = async (row: UploadHistoryItem) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除文件 "${row.fileName}" 的记录吗？`,
-      '确认删除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
+  
+  // 添加有效文件到上传队列
+  if (validFiles.length > 0) {
+    uploadStore.addFiles(validFiles)
     
-    const index = uploadHistory.value.findIndex(item => item.id === row.id)
-    if (index > -1) {
-      uploadHistory.value.splice(index, 1)
-    }
-    ElMessage.success('删除成功')
-  } catch {
-    // 用户取消删除
+    systemStore.addNotification({
+      type: 'success',
+      title: '文件添加成功',
+      message: `已添加 ${validFiles.length} 个文件到上传队列`,
+      read: false
+    })
   }
+}
+
+// 上传控制
+const startUpload = async () => {
+  if (!canStartUpload.value) return
+  
+  try {
+    await uploadStore.processUploadQueue()
+    
+    systemStore.addNotification({
+      type: 'success',
+      title: '上传开始',
+      message: '文件上传已开始，请耐心等待',
+      read: false
+    })
+  } catch (error) {
+    systemStore.addNotification({
+      type: 'error',
+      title: '上传失败',
+      message: error instanceof Error ? error.message : '上传过程中发生错误',
+      read: false
+    })
+  }
+}
+
+const clearAllFiles = () => {
+  uploadStore.clearAllUploads()
+  
+  systemStore.addNotification({
+    type: 'info',
+    title: '列表已清空',
+    message: '已清空所有上传文件',
+    read: false
+  })
+}
+
+// 文件操作
+const removeFile = (file: UploadFileType) => {
+  try {
+    // 从上传队列或历史记录中移除文件
+    uploadStore.removeFile(file.id)
+    
+    systemStore.addNotification({
+      type: 'info',
+      title: '文件已移除',
+      message: `已从列表中移除 ${file.file.name}`,
+      read: false
+    })
+  } catch (error) {
+    systemStore.addNotification({
+      type: 'error',
+      title: '移除失败',
+      message: error instanceof Error ? error.message : '移除文件失败',
+      read: false
+    })
+  }
+}
+
+const retryFile = async (file: UploadFileType) => {
+  try {
+    // 重置文件状态
+    file.status = 'pending'
+    file.progress = 0
+    file.error = undefined
+    file.currentStep = undefined
+    
+    // 重新处理上传队列
+    await uploadStore.processUploadQueue()
+    
+    systemStore.addNotification({
+      type: 'success',
+      title: '重试开始',
+      message: `正在重新上传 ${file.file.name}`,
+      read: false
+    })
+  } catch (error) {
+    systemStore.addNotification({
+      type: 'error',
+      title: '重试失败',
+      message: error instanceof Error ? error.message : '重试上传失败',
+      read: false
+    })
+  }
+}
+
+// 文档查看
+const viewDocument = (file: UploadFileType) => {
+  if (file.result?.documentId) {
+    // 跳转到文档详情页
+    // router.push(`/system/documents/${file.result.documentId}`)
+    systemStore.addNotification({
+      type: 'info',
+      title: '功能开发中',
+      message: '文档详情功能正在开发中',
+      read: false
+    })
+  }
+}
+
+// 历史记录操作
+const clearHistory = () => {
+  ElMessageBox.confirm(
+    '确定要清空所有上传历史记录吗？',
+    '清空历史',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    uploadStore.clearCompletedUploads()
+    
+    systemStore.addNotification({
+      type: 'success',
+      title: '历史已清空',
+      message: '已清空所有上传历史记录',
+      read: false
+    })
+  }).catch(() => {
+    // 用户取消
+  })
+}
+
+const deleteHistoryItem = (file: UploadFileType) => {
+  ElMessageBox.confirm(
+    `确定要删除 "${file.file.name}" 的上传记录吗？`,
+    '删除记录',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    }
+  ).then(() => {
+    try {
+      // 从历史记录中删除文件
+      uploadStore.removeFile(file.id)
+      
+      systemStore.addNotification({
+        type: 'success',
+        title: '记录已删除',
+        message: '已从历史记录中删除',
+        read: false
+      })
+    } catch (error) {
+      systemStore.addNotification({
+        type: 'error',
+        title: '删除失败',
+        message: error instanceof Error ? error.message : '删除记录失败',
+        read: false
+      })
+    }
+  }).catch(() => {
+    // 用户取消
+  })
 }
 
 // 工具函数
-const getFileType = (fileName: string): string => {
-  return fileName.split('.').pop()?.toLowerCase() || ''
-}
-
-const getFileIcon = (type: string) => {
-  const iconMap: Record<string, any> = {
-    pdf: Document,
-    doc: DocumentCopy,
-    docx: DocumentCopy,
-    xls: Tickets,
-    xlsx: Tickets,
-    ppt: Notebook,
-    pptx: Notebook
+const getFileItemClass = (file: UploadFileType) => {
+  return {
+    'is-failed': file.status === 'failed',
+    'is-completed': file.status === 'completed',
+    'is-processing': file.status === 'processing' || file.status === 'uploading'
   }
-  return iconMap[type] || Document
 }
 
-const getFileIconColor = (fileName: string) => {
-  const type = getFileType(fileName)
-  const colorMap: Record<string, string> = {
-    pdf: 'text-red-600',
-    doc: 'text-blue-600',
-    docx: 'text-blue-600',
-    xls: 'text-green-600',
-    xlsx: 'text-green-600',
-    ppt: 'text-orange-600',
-    pptx: 'text-orange-600'
-  }
-  return colorMap[type] || 'text-gray-600'
-}
-
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-const getUploadStatusType = (status: string) => {
+const getStatusType = (status: string) => {
   const typeMap: Record<string, string> = {
     pending: 'info',
     uploading: 'primary',
@@ -477,7 +571,7 @@ const getUploadStatusType = (status: string) => {
   return typeMap[status] || 'info'
 }
 
-const getUploadStatusText = (status: string) => {
+const getStatusText = (status: string) => {
   const textMap: Record<string, string> = {
     pending: '等待中',
     uploading: '上传中',
@@ -495,22 +589,176 @@ const getProgressStatus = (status: string) => {
 
 <style scoped>
 .upload-container {
-  @apply p-6;
+  @apply p-6 max-w-6xl mx-auto;
 }
 
-.upload-demo :deep(.el-upload-dragger) {
-  @apply w-full h-48 flex flex-col items-center justify-center;
+.page-header {
+  @apply mb-8;
 }
 
-.upload-demo :deep(.el-upload-dragger:hover) {
-  @apply border-primary-500;
+.upload-area {
+  @apply mb-8;
 }
 
-:deep(.el-progress-bar__outer) {
-  @apply bg-gray-200;
+.upload-dropzone {
+  @apply relative border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer transition-all duration-300;
+  @apply hover:border-blue-400 hover:bg-blue-50;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-:deep(.el-progress-bar__inner) {
-  @apply bg-primary-500;
+.upload-dropzone.is-dragover {
+  @apply border-blue-500 bg-blue-50;
+  @apply border-solid;
+}
+
+.upload-dropzone.is-uploading {
+  @apply border-gray-300 bg-gray-50;
+  @apply cursor-not-allowed;
+}
+
+.upload-content {
+  @apply space-y-4;
+}
+
+.upload-icon {
+  @apply text-gray-400 mx-auto;
+}
+
+.upload-dropzone:hover .upload-icon {
+  @apply text-blue-500;
+}
+
+.upload-title {
+  @apply text-lg font-medium text-gray-700;
+}
+
+.upload-subtitle {
+  @apply text-sm text-gray-500;
+}
+
+.upload-subtitle em {
+  @apply text-blue-600 not-italic font-medium;
+}
+
+.upload-info {
+  @apply space-y-1;
+}
+
+.upload-controls {
+  @apply flex justify-center space-x-4 mt-6;
+}
+
+.file-input {
+  @apply absolute inset-0 w-full h-full opacity-0 cursor-pointer;
+}
+
+.upload-files-section {
+  @apply mb-8;
+}
+
+.section-header {
+  @apply flex justify-between items-center mb-4;
+}
+
+.file-stats {
+  @apply text-sm text-gray-500;
+}
+
+.files-list {
+  @apply space-y-3;
+}
+
+.file-item {
+  @apply bg-white rounded-lg border border-gray-200 p-4;
+  @apply flex items-center space-x-4;
+  @apply transition-all duration-200;
+}
+
+.file-item:hover {
+  @apply shadow-md;
+}
+
+.file-item.is-failed {
+  @apply border-red-200 bg-red-50;
+}
+
+.file-item.is-completed {
+  @apply border-green-200 bg-green-50;
+}
+
+.file-item.is-processing {
+  @apply border-blue-200 bg-blue-50;
+}
+
+.file-icon {
+  @apply flex-shrink-0;
+}
+
+.file-info {
+  @apply flex-1 min-w-0;
+}
+
+.file-name {
+  @apply text-sm font-medium text-gray-800 truncate;
+}
+
+.file-meta {
+  @apply flex items-center space-x-2 text-xs text-gray-500;
+}
+
+.file-size {
+  @apply text-gray-500;
+}
+
+.file-type {
+  @apply text-gray-400;
+}
+
+.file-error {
+  @apply flex items-center space-x-1 text-xs text-red-600 mt-1;
+}
+
+.file-progress {
+  @apply flex-1 max-w-xs;
+}
+
+.progress-step {
+  @apply text-xs text-gray-500 mt-1;
+}
+
+.progress-time {
+  @apply text-xs text-gray-400 mt-1;
+}
+
+.file-status {
+  @apply flex-shrink-0;
+}
+
+.file-actions {
+  @apply flex items-center space-x-2;
+}
+
+.upload-history-section {
+  @apply mb-8;
+}
+
+.empty-state {
+  @apply text-center py-12;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

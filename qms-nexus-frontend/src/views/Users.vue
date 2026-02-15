@@ -363,7 +363,7 @@ const handleCurrentChange = (val: number) => {
 
 // 获取角色类型
 const getRoleType = (role: string) => {
-  const typeMap: Record<string, string> = {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     admin: 'danger',
     user: 'primary',
     guest: 'info'

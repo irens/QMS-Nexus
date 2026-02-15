@@ -8,40 +8,46 @@ const router = createRouter({
       path: '/',
       name: 'Layout',
       component: DefaultLayout,
-      redirect: '/dashboard',
+      redirect: '/system/dashboard',
       children: [
         {
-          path: 'dashboard',
+          path: 'system/dashboard',
           name: 'Dashboard',
           component: () => import('@/views/Dashboard.vue'),
           meta: { title: '仪表盘' }
         },
         {
-          path: 'upload',
+          path: 'system/upload',
           name: 'Upload',
           component: () => import('@/views/Upload.vue'),
           meta: { title: '文件上传' }
         },
         {
-          path: 'documents',
+          path: 'system/documents',
           name: 'Documents',
           component: () => import('@/views/Documents.vue'),
           meta: { title: '文档列表' }
         },
         {
-          path: 'tags',
+          path: 'system/documents/:id',
+          name: 'DocumentDetail',
+          component: () => import('@/views/DocumentDetail.vue'),
+          meta: { title: '文档详情' }
+        },
+        {
+          path: 'system/tags',
           name: 'Tags',
           component: () => import('@/views/Tags.vue'),
           meta: { title: '标签管理' }
         },
         {
-          path: 'chat',
+          path: 'system/chat',
           name: 'Chat',
           component: () => import('@/views/Chat.vue'),
           meta: { title: '智能问答' }
         },
         {
-          path: 'search',
+          path: 'system/search',
           name: 'Search',
           component: () => import('@/views/Search.vue'),
           meta: { title: '文档搜索' }
@@ -57,6 +63,12 @@ const router = createRouter({
           name: 'Logs',
           component: () => import('@/views/Logs.vue'),
           meta: { title: '操作日志' }
+        },
+        {
+          path: 'system/settings',
+          name: 'Settings',
+          component: () => import('@/views/Settings.vue'),
+          meta: { title: '系统设置' }
         }
       ]
     },

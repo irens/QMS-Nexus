@@ -5,8 +5,15 @@
       <p class="text-gray-600">基于医疗文档知识库的智能问答系统</p>
     </div>
 
-    <!-- 问答界面 -->
-    <div class="flex h-[calc(100vh-200px)] bg-white rounded-lg shadow-sm">
+    <!-- 错误边界包装 -->
+    <ErrorBoundary 
+      error-title="问答系统出现异常"
+      error-message="很抱歉，智能问答系统遇到了问题。请尝试重新加载或返回首页。"
+      @error="handleChatError"
+      @reset="resetChat"
+    >
+      <!-- 问答界面 -->
+      <div class="flex h-[calc(100vh-200px)] bg-white rounded-lg shadow-sm">
       <!-- 对话历史侧边栏 -->
       <div class="w-80 border-r border-gray-200 flex flex-col">
         <!-- 新建对话按钮 -->
@@ -222,12 +229,15 @@
         </div>
       </div>
     </div>
+  </ErrorBoundary>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick, watch } from 'vue'
+import { ref, reactive, nextTick, watch, ComponentPublicInstance } from 'vue'
 import { ElMessage } from 'element-plus'
+import { chatService } from '@/services/chat'
+import ErrorBoundary from '@/components/ErrorBoundary.vue'
 import {
   Plus,
   ChatDotRound,
@@ -337,8 +347,7 @@ const sendMessage = async (message?: string) => {
   await nextTick()
   scrollToBottom()
 
-  // 模拟AI响应
-  setTimeout(() => {
+  try {
     // 创建AI思考消息
     const thinkingMessage: Message = {
       id: (Date.now() + 1).toString(),
@@ -349,63 +358,84 @@ const sendMessage = async (message?: string) => {
     }
     messages.push(thinkingMessage)
 
-    // 模拟思考过程
-    setTimeout(() => {
+    // 滚动到底部显示思考状态
+    await nextTick()
+    scrollToBottom()
+
+    // 根据是否启用流式响应选择不同的调用方式
+    if (enableStreaming.value) {
+      // 流式响应
       thinkingMessage.status = 'streaming'
       thinkingMessage.content = '正在为您查询相关知识...'
 
-      // 模拟流式响应
-      let response = getMockResponse(content)
-      let currentIndex = 0
-      const streamingInterval = setInterval(() => {
-        if (currentIndex < response.length) {
-          thinkingMessage.content = response.slice(0, currentIndex + 1)
-          currentIndex += Math.floor(Math.random() * 5) + 1
+      let fullResponse = ''
+      const response = await chatService.askQuestionStream(
+        content,
+        undefined, // context
+        undefined, // filterTags
+        5, // topK
+        (chunk: string) => {
+          fullResponse += chunk
+          thinkingMessage.content = fullResponse
           scrollToBottom()
-        } else {
-          clearInterval(streamingInterval)
-          thinkingMessage.status = 'completed'
-          thinkingMessage.content = response
-          
-          // 添加来源（如果启用）
-          if (enableSources.value) {
-            thinkingMessage.sources = [
-              {
-                id: '1',
-                fileName: '医疗质量管理规范.pdf',
-                page: 12,
-                content: '相关章节内容'
-              },
-              {
-                id: '2',
-                fileName: '2024年度质量报告.docx',
-                page: 8,
-                content: '相关章节内容'
-              }
-            ]
-          }
-
-          isThinking.value = false
-          scrollToBottom()
-          
-          // 更新对话历史
-          updateChatHistory()
         }
-      }, 50)
-    }, 1000)
-  }, 500)
+      )
+
+      // 更新最终状态
+      thinkingMessage.status = 'completed'
+      thinkingMessage.content = response.answer
+      
+      // 添加来源（如果启用且有来源）
+      if (enableSources.value && response.sources && response.sources.length > 0) {
+        thinkingMessage.sources = response.sources.map((source, index) => ({
+          id: (index + 1).toString(),
+          fileName: source.documentName,
+          page: source.page || 1,
+          content: source.table || '相关章节内容'
+        }))
+      }
+    } else {
+      // 普通响应
+      thinkingMessage.content = '正在为您查询相关知识...'
+      
+      const response = await chatService.askQuestion(content)
+      
+      thinkingMessage.status = 'completed'
+      thinkingMessage.content = response.answer
+      
+      // 添加来源（如果启用且有来源）
+      if (enableSources.value && response.sources && response.sources.length > 0) {
+        thinkingMessage.sources = response.sources.map((source, index) => ({
+          id: (index + 1).toString(),
+          fileName: source.documentName,
+          page: source.page || 1,
+          content: source.table || '相关章节内容'
+        }))
+      }
+    }
+
+    isThinking.value = false
+    scrollToBottom()
+    
+    // 更新对话历史
+    updateChatHistory()
+    
+  } catch (error) {
+    console.error('问答请求失败:', error)
+    
+    // 更新错误消息
+    const errorMessage = messages[messages.length - 1]
+    if (errorMessage && errorMessage.role === 'assistant') {
+      errorMessage.status = 'completed'
+      errorMessage.content = '抱歉，我无法回答您的问题。请稍后重试或联系技术支持。'
+    }
+    
+    isThinking.value = false
+    scrollToBottom()
+  }
 }
 
-// 获取模拟响应
-const getMockResponse = (question: string): string => {
-  const responses: Record<string, string> = {
-    '如何建立医疗质量管理体系？': '建立医疗质量管理体系需要遵循以下步骤：\n\n1. **制定质量方针和目标**\n   - 明确质量管理的总体方向\n   - 设定可测量的质量目标\n   - 确保目标与组织战略一致\n\n2. **建立组织架构**\n   - 设立质量管理委员会\n   - 指定质量管理人员\n   - 明确各部门职责分工\n\n3. **制定标准操作程序**\n   - 建立标准化工作流程\n   - 制定质量控制标准\n   - 建立监测评估机制\n\n4. **实施PDCA循环**\n   - Plan(计划)：制定改进计划\n   - Do(执行)：实施改进措施\n   - Check(检查)：检查执行效果\n   - Act(处理)：标准化成功经验\n\n5. **持续监控和改进**\n   - 定期收集质量数据\n   - 分析质量问题\n   - 实施改进措施\n   - 评估改进效果',
-    
-    '医疗质量指标有哪些？': '医疗质量指标主要包括以下几个方面：\n\n1. **结构指标**\n   - 医疗设备和设施配置\n   - 医护人员资质和配比\n   - 医疗技术标准\n   - 管理制度完善程度\n\n2. **过程指标**\n   - 诊疗规范执行率\n   - 平均住院日\n   - 术前等待时间\n   - 会诊及时率\n   - 病历书写合格率\n\n3. **结果指标**\n   - 死亡率\n   - 并发症发生率\n   - 感染率\n   - 再入院率\n   - 患者满意度\n   - 治愈率\n\n4. **效率指标**\n   - 床位周转率\n   - 手术台利用率\n   - 检查预约等待时间\n   - 急诊等待时间\n\n5. **安全指标**\n   - 医疗事故发生率\n   - 用药错误率\n   - 跌倒发生率\n   - 压疮发生率'
-  }
-  
-  return responses[question] || '我理解您的问题，基于医疗质量管理知识库，我可以为您提供相关信息。请允许我查询相关知识库内容...'
-}
+
 
 // 格式化消息
 const formatMessage = (content: string): string => {
@@ -488,6 +518,33 @@ const updateChatHistory = () => {
 watch(messages, () => {
   scrollToBottom()
 })
+
+/**
+ * 处理聊天错误
+ */
+const handleChatError = (error: Error, instance: ComponentPublicInstance | null, info: string) => {
+  console.error('Chat组件错误:', error, info)
+  
+  // 记录错误日志
+  chatService.logError({
+    error: error.message,
+    stack: error.stack,
+    component: 'Chat',
+    info
+  }).catch(console.error)
+}
+
+/**
+ * 重置聊天状态
+ */
+const resetChat = () => {
+  console.log('重置聊天状态')
+  currentChatId.value = ''
+  currentChatTitle.value = ''
+  messages.length = 0
+  isThinking.value = false
+  inputMessage.value = ''
+}
 </script>
 
 <style scoped>

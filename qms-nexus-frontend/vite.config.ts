@@ -1,13 +1,11 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import vueDevTools from 'vite-plugin-vue-devtools'
 import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
-    vue(),
-    vueDevTools(),
+    vue()
   ],
   resolve: {
     alias: {
@@ -36,5 +34,9 @@ export default defineConfig({
         assetFileNames: '[ext]/[name]-[hash].[ext]'
       }
     }
+  },
+  test: {
+    globals: true,
+    environment: 'jsdom'
   }
 })

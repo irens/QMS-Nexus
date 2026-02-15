@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # 前端服务
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - qms-network
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/system"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 后端服务（假设后端代码在同级目录的qms-nexus文件夹）
+  backend:
+    build:
+      context: ../qms-nexus
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./data/qms.db
+      - REDIS_URL=redis://redis:6379/0
+      - UPLOAD_DIR=./data/uploads
+    volumes:
+      - qms-data:/app/data
+    depends_on:
+      - redis
+    networks:
+      - qms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis服务
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - qms-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  qms-network:
+    driver: bridge
+
+volumes:
+  qms-data:
+    driver: local

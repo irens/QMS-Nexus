@@ -470,7 +470,7 @@ const handleCurrentChange = (val: number) => {
 
 // 获取操作类型
 const getOperationType = (operation: string) => {
-  const typeMap: Record<string, string> = {
+  const typeMap: Record<string, 'primary' | 'success' | 'warning' | 'info' | 'danger'> = {
     upload: 'primary',
     view: 'info',
     download: 'success',

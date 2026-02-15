@@ -110,7 +110,7 @@
                 <el-icon><Upload /></el-icon>
                 <template #title>文件上传</template>
               </el-menu-item>
-              <el-menu-item index="document-list">
+              <el-menu-item index="documents">
                 <el-icon><DocumentCopy /></el-icon>
                 <template #title>文档列表</template>
               </el-menu-item>
@@ -142,6 +142,10 @@
               <el-menu-item index="logs">
                 <el-icon><DocumentChecked /></el-icon>
                 <template #title>操作日志</template>
+              </el-menu-item>
+              <el-menu-item index="settings">
+                <el-icon><Tools /></el-icon>
+                <template #title>系统设置</template>
               </el-menu-item>
             </el-sub-menu>
           </el-menu>
@@ -198,6 +202,7 @@ import {
   ChatDotRound,
   Search,
   Setting,
+  Tools,
   User,
   DocumentChecked,
   Operation,
@@ -230,6 +235,7 @@ const activeMenu = computed(() => {
   if (path.includes('/search')) return 'search'
   if (path.includes('/users')) return 'users'
   if (path.includes('/logs')) return 'logs'
+  if (path.includes('/settings')) return 'settings'
   return 'dashboard'
 })
 
@@ -250,14 +256,15 @@ const toggleSidebar = () => {
 // 菜单选择
 const handleMenuSelect = (index: string) => {
   const routes: Record<string, string> = {
-    'dashboard': '/',
-    'upload': '/upload',
-    'document-list': '/documents',
-    'tags': '/tags',
-    'chat': '/chat',
-    'search': '/search',
+    'dashboard': '/system/dashboard',
+    'upload': '/system/upload',
+    'documents': '/system/documents',
+    'tags': '/system/tags',
+    'chat': '/system/chat',
+    'search': '/system/search',
     'users': '/system/users',
-    'logs': '/system/logs'
+    'logs': '/system/logs',
+    'settings': '/system/settings'
   }
   
   const path = routes[index]

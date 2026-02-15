@@ -19,8 +19,9 @@
             v-model="newTagName"
             placeholder="输入标签名称"
             class="flex-1"
+            :disabled="loading"
           />
-          <el-select v-model="newTagColor" placeholder="选择颜色">
+          <el-select v-model="newTagColor" placeholder="选择颜色" :disabled="loading">
             <el-option
               v-for="color in tagColors"
               :key="color.value"
@@ -36,7 +37,12 @@
               </div>
             </el-option>
           </el-select>
-          <el-button type="primary" @click="addTag" :disabled="!newTagName">
+          <el-button 
+            type="primary" 
+            @click="addTag" 
+            :disabled="!newTagName || loading"
+            :loading="loading"
+          >
             <el-icon class="mr-1"><Plus /></el-icon>
             添加标签
           </el-button>
@@ -46,19 +52,39 @@
 
     <!-- 标签列表 -->
     <div class="mb-6">
-      <el-card>
+      <el-card v-loading="tagStore.loading">
         <template #header>
           <div class="flex items-center justify-between">
             <span class="text-lg font-medium">标签列表</span>
             <div class="text-sm text-gray-500">
-              共 {{ tags.length }} 个标签
+              共 {{ tagStore.tags.length }} 个标签
             </div>
           </div>
         </template>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <!-- 空状态 -->
+        <div v-if="tagStore.isEmpty && !tagStore.loading" class="text-center py-12">
+          <el-icon size="48" class="text-gray-300 mb-4">
+            <Document />
+          </el-icon>
+          <p class="text-gray-500 mb-4">暂无标签</p>
+          <el-button type="primary" @click="newTagName = '新标签'; newTagColor = 'blue'">
+            创建第一个标签
+          </el-button>
+        </div>
+        
+        <!-- 错误状态 -->
+        <div v-else-if="tagStore.error" class="text-center py-12">
+          <el-icon size="48" class="text-red-300 mb-4">
+            <Document />
+          </el-icon>
+          <p class="text-red-500 mb-4">{{ tagStore.error }}</p>
+          <el-button type="primary" @click="initData">重新加载</el-button>
+        </div>
+        
+        <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           <div 
-            v-for="tag in tags" 
+            v-for="tag in tagStore.tags" 
             :key="tag.id"
             class="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
           >
@@ -94,12 +120,16 @@
             </div>
             
             <div class="text-sm text-gray-600 mb-2">
-              <p>文档数量: {{ tag.documentCount }}</p>
-              <p>创建时间: {{ tag.createdAt }}</p>
+              <p>文档数量: {{ tag.usageCount }}</p>
+              <p>创建时间: {{ formatDate(tag.createdAt) }}</p>
             </div>
             
             <div class="text-xs text-gray-500">
               <p>描述: {{ tag.description || '暂无描述' }}</p>
+            </div>
+            
+            <div class="text-xs text-gray-400 mt-2">
+              <p>更新时间: {{ formatDate(tag.updatedAt) }}</p>
             </div>
           </div>
         </div>
@@ -108,14 +138,14 @@
 
     <!-- 标签统计 -->
     <div>
-      <el-card>
+      <el-card v-loading="loading">
         <template #header>
           <span class="text-lg font-medium">标签统计</span>
         </template>
         
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div class="text-center">
-            <div class="text-2xl font-bold text-blue-600">{{ tags.length }}</div>
+            <div class="text-2xl font-bold text-blue-600">{{ tagStore.tags.length }}</div>
             <div class="text-sm text-gray-600">总标签数</div>
           </div>
           <div class="text-center">
@@ -187,8 +217,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useTagStore } from '@/stores/tag'
+import { useRouter } from 'vue-router'
 import {
   Plus,
   Edit,
@@ -200,10 +232,11 @@ import {
 interface TagItem {
   id: string
   name: string
-  color: string
+  color?: string
   description?: string
-  documentCount: number
+  usageCount: number
   createdAt: string
+  updatedAt: string
 }
 
 interface TagColor {
@@ -224,49 +257,24 @@ const tagColors: TagColor[] = [
   { value: 'gray', label: '灰色', class: 'bg-gray-500' }
 ]
 
-// 标签数据
-const tags = ref<TagItem[]>([
-  {
-    id: '1',
-    name: '质量管理',
-    color: 'blue',
-    description: '与医疗质量管理相关的文档',
-    documentCount: 25,
-    createdAt: '2024-01-15'
-  },
-  {
-    id: '2',
-    name: '医疗规范',
-    color: 'green',
-    description: '医疗行业标准和规范',
-    documentCount: 18,
-    createdAt: '2024-01-14'
-  },
-  {
-    id: '3',
-    name: '培训资料',
-    color: 'yellow',
-    description: '员工培训和教育资料',
-    documentCount: 12,
-    createdAt: '2024-01-13'
-  },
-  {
-    id: '4',
-    name: '政策法规',
-    color: 'red',
-    description: '相关法律法规和政策文件',
-    documentCount: 8,
-    createdAt: '2024-01-12'
-  },
-  {
-    id: '5',
-    name: '标准规范',
-    color: 'purple',
-    description: '行业标准和操作规范',
-    documentCount: 15,
-    createdAt: '2024-01-11'
-  }
-])
+// 状态管理
+const tagStore = useTagStore()
+const router = useRouter()
+
+// 标签统计信息
+const tagStats = ref<{
+  totalTags: number
+  totalDocuments: number
+  averageDocumentsPerTag: number
+  mostUsedTags: Array<{
+    tagId: string
+    tagName: string
+    documentCount: number
+  }>
+} | null>(null)
+
+// 加载状态
+const loading = ref(false)
 
 // 新标签表单
 const newTagName = ref('')
@@ -285,16 +293,16 @@ const editDialog = reactive({
 
 // 计算属性
 const totalDocuments = computed(() => {
-  return tags.value.reduce((sum, tag) => sum + tag.documentCount, 0)
+  return tagStore.tags.reduce((sum, tag) => sum + tag.usageCount, 0)
 })
 
 const averageDocumentsPerTag = computed(() => {
-  if (tags.value.length === 0) return 0
-  return Math.round(totalDocuments.value / tags.value.length)
+  if (tagStore.tags.length === 0) return 0
+  return Math.round(totalDocuments.value / tagStore.tags.length)
 })
 
 // 获取标签颜色类名
-const getTagColorClass = (color: string): string => {
+const getTagColorClass = (color?: string): string => {
   const colorMap: Record<string, string> = {
     blue: 'bg-blue-500',
     green: 'bg-green-500',
@@ -305,40 +313,36 @@ const getTagColorClass = (color: string): string => {
     indigo: 'bg-indigo-500',
     gray: 'bg-gray-500'
   }
-  return colorMap[color] || 'bg-gray-500'
+  return color ? (colorMap[color] || 'bg-gray-500') : 'bg-gray-500'
 }
 
 // 添加标签
-const addTag = () => {
+const addTag = async () => {
   if (!newTagName.value.trim()) {
     ElMessage.warning('请输入标签名称')
     return
   }
   
-  const existingTag = tags.value.find(tag => 
-    tag.name.toLowerCase() === newTagName.value.toLowerCase()
-  )
-  
-  if (existingTag) {
-    ElMessage.warning('标签名称已存在')
-    return
+  loading.value = true
+  try {
+    const newTag = await tagStore.createTag(
+      newTagName.value.trim(),
+      '',
+      newTagColor.value
+    )
+    
+    if (newTag) {
+      newTagName.value = ''
+      newTagColor.value = 'blue'
+      ElMessage.success('标签添加成功')
+      // 重新获取统计信息
+      await loadTagStats()
+    }
+  } catch (error) {
+    ElMessage.error('标签添加失败')
+  } finally {
+    loading.value = false
   }
-  
-  const newTag: TagItem = {
-    id: Date.now().toString(),
-    name: newTagName.value.trim(),
-    color: newTagColor.value,
-    description: '',
-    documentCount: 0,
-    createdAt: new Date().toISOString().split('T')[0]
-  }
-  
-  tags.value.push(newTag)
-  
-  newTagName.value = ''
-  newTagColor.value = 'blue'
-  
-  ElMessage.success('标签添加成功')
 }
 
 // 编辑标签
@@ -346,33 +350,73 @@ const editTag = (tag: TagItem) => {
   editDialog.form = {
     id: tag.id,
     name: tag.name,
-    color: tag.color,
+    color: tag.color || 'blue',
     description: tag.description || ''
   }
   editDialog.visible = true
 }
 
 // 保存标签
-const saveTag = () => {
+const saveTag = async () => {
   if (!editDialog.form.name.trim()) {
     ElMessage.warning('请输入标签名称')
     return
   }
   
-  const tag = tags.value.find(t => t.id === editDialog.form.id)
-  if (tag) {
-    tag.name = editDialog.form.name.trim()
-    tag.color = editDialog.form.color
-    tag.description = editDialog.form.description.trim()
+  loading.value = true
+  try {
+    const updatedTag = await tagStore.updateTag(editDialog.form.id, {
+      name: editDialog.form.name.trim(),
+      color: editDialog.form.color,
+      description: editDialog.form.description.trim()
+    })
     
-    editDialog.visible = false
-    ElMessage.success('标签更新成功')
+    if (updatedTag) {
+      editDialog.visible = false
+      ElMessage.success('标签更新成功')
+      // 重新获取统计信息
+      await loadTagStats()
+    }
+  } catch (error) {
+    ElMessage.error('标签更新失败')
+  } finally {
+    loading.value = false
   }
 }
 
 // 查看标签文档
 const viewTaggedDocuments = (tag: TagItem) => {
-  ElMessage.info(`查看标签 "${tag.name}" 的文档`)
+  router.push({
+    name: 'Documents',
+    query: { tags: tag.id }
+  })
+}
+
+// 加载标签统计信息
+const loadTagStats = async () => {
+  try {
+    const stats = await tagStore.getTagStats()
+    if (stats) {
+      tagStats.value = stats
+    }
+  } catch (error) {
+    console.error('加载标签统计失败:', error)
+  }
+}
+
+// 初始化数据
+const initData = async () => {
+  loading.value = true
+  try {
+    await Promise.all([
+      tagStore.fetchTags(),
+      loadTagStats()
+    ])
+  } catch (error) {
+    ElMessage.error('加载数据失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 // 删除标签
@@ -388,9 +432,9 @@ const deleteTag = async (tag: TagItem) => {
       }
     )
     
-    if (tag.documentCount > 0) {
+    if (tag.usageCount > 0) {
       await ElMessageBox.confirm(
-        `标签 "${tag.name}" 下还有 ${tag.documentCount} 个文档，删除后这些文档将失去此标签。是否继续？`,
+        `标签 "${tag.name}" 下还有 ${tag.usageCount} 个文档，删除后这些文档将失去此标签。是否继续？`,
         '确认删除',
         {
           confirmButtonText: '确定',
@@ -400,16 +444,27 @@ const deleteTag = async (tag: TagItem) => {
       )
     }
     
-    const index = tags.value.findIndex(t => t.id === tag.id)
-    if (index > -1) {
-      tags.value.splice(index, 1)
+    const success = await tagStore.deleteTag(tag.id)
+    if (success) {
+      ElMessage.success('标签删除成功')
+      // 重新获取统计信息
+      await loadTagStats()
     }
-    
-    ElMessage.success('标签删除成功')
   } catch {
     // 用户取消删除
   }
 }
+
+// 工具函数
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('zh-CN')
+}
+
+// 生命周期
+onMounted(() => {
+  initData()
+})
 </script>
 
 <style scoped>

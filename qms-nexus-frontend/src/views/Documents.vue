@@ -8,7 +8,7 @@
     <!-- 搜索和筛选 -->
     <div class="mb-6">
       <el-row :gutter="20">
-        <el-col :span="12">
+        <el-col :span="8">
           <el-input
             v-model="searchQuery"
             placeholder="搜索文档名称..."
@@ -21,28 +21,75 @@
             </template>
           </el-input>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="4">
           <el-select v-model="selectedType" placeholder="文件类型" clearable @change="handleSearch">
-            <el-option label="PDF" value="pdf" />
-            <el-option label="Word" value="doc" />
-            <el-option label="Excel" value="xls" />
-            <el-option label="PowerPoint" value="ppt" />
+            <el-option
+              v-for="type in fileTypeOptions"
+              :key="type.value"
+              :label="type.label"
+              :value="type.value"
+            />
           </el-select>
         </el-col>
-        <el-col :span="6">
+        <el-col :span="4">
           <el-select v-model="selectedTag" placeholder="标签筛选" clearable @change="handleSearch">
-            <el-option label="质量管理" value="quality" />
-            <el-option label="医疗规范" value="medical" />
-            <el-option label="培训资料" value="training" />
+            <el-option
+              v-for="tag in availableTags"
+              :key="tag.value"
+              :label="tag.label"
+              :value="tag.value"
+            />
           </el-select>
+        </el-col>
+        <el-col :span="4">
+          <el-date-picker
+            v-model="dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            clearable
+            @change="handleSearch"
+          />
+        </el-col>
+        <el-col :span="4">
+          <div class="flex space-x-2">
+            <el-button type="primary" @click="handleSearch">
+              <el-icon class="mr-1"><Search /></el-icon>
+              搜索
+            </el-button>
+            <el-button @click="resetFilters">
+              重置
+            </el-button>
+          </div>
         </el-col>
       </el-row>
+    </div>
+
+    <!-- 批量操作 -->
+    <div class="mb-4" v-if="selectedDocuments.length > 0">
+      <el-space>
+        <el-button type="danger" size="small" @click="batchDelete">
+          <el-icon class="mr-1"><Delete /></el-icon>
+          批量删除 ({{ selectedDocuments.length }})
+        </el-button>
+        <el-button type="warning" size="small" @click="batchDownload">
+          <el-icon class="mr-1"><Download /></el-icon>
+          批量下载
+        </el-button>
+        <el-button type="info" size="small" @click="batchUpdateTags">
+          <el-icon class="mr-1"><Edit /></el-icon>
+          批量编辑标签
+        </el-button>
+      </el-space>
     </div>
 
     <!-- 文档列表 -->
     <div class="mb-6">
       <el-table 
-        :data="filteredDocuments" 
+        :data="documents" 
         style="width: 100%"
         v-loading="loading"
         @selection-change="handleSelectionChange"
@@ -56,14 +103,18 @@
                 <component :is="getFileIcon(row.fileType)" />
               </el-icon>
               <div>
-                <p class="text-sm font-medium text-gray-800">{{ row.fileName }}</p>
-                <p class="text-xs text-gray-500">{{ row.fileSize }}</p>
+                <p class="text-sm font-medium text-gray-800">{{ row.filename }}</p>
+                <p class="text-xs text-gray-500">{{ formatFileSize(row.fileSize) }}</p>
               </div>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column prop="uploadTime" label="上传时间" width="150" />
+        <el-table-column label="上传时间" width="150">
+          <template #default="{ row }">
+            {{ new Date(row.uploadTime).toLocaleString('zh-CN') }}
+          </template>
+        </el-table-column>
         
         <el-table-column label="标签" width="200">
           <template #default="{ row }">
@@ -164,7 +215,7 @@
     >
       <div class="space-y-4">
         <div>
-          <p class="text-sm text-gray-600 mb-2">文件名：{{ editTagsDialog.document?.fileName }}</p>
+          <p class="text-sm text-gray-600 mb-2">文件名：{{ editTagsDialog.document?.filename }}</p>
           <p class="text-sm text-gray-600">当前标签：</p>
           <div class="flex flex-wrap gap-2 mt-2">
             <el-tag
@@ -209,8 +260,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { useDocumentStore } from '@/stores/document'
+import { formatFileSize } from '@/utils/format'
 import {
   Search,
   Document,
@@ -220,75 +274,27 @@ import {
   CaretBottom,
   Edit,
   Share,
-  Delete
+  Delete,
+  Download
 } from '@element-plus/icons-vue'
+import type { Document as DocumentType } from '@/types/api'
 
-interface DocumentItem {
-  id: string
-  fileName: string
-  fileType: string
-  fileSize: string
-  uploadTime: string
-  tags: string[]
-  status: 'processing' | 'completed' | 'failed'
-}
+const router = useRouter()
+const documentStore = useDocumentStore()
 
 // 搜索和筛选
 const searchQuery = ref('')
 const selectedType = ref('')
 const selectedTag = ref('')
+const dateRange = ref<[Date, Date] | null>(null)
 
 // 表格数据
-const loading = ref(false)
-const selectedDocuments = ref<DocumentItem[]>([])
-const currentPage = ref(1)
-const pageSize = ref(10)
-const totalDocuments = ref(100)
-
-// 模拟文档数据
-const documents = ref<DocumentItem[]>([
-  {
-    id: '1',
-    fileName: '医疗质量管理规范.pdf',
-    fileType: 'pdf',
-    fileSize: '2.3 MB',
-    uploadTime: '2024-01-15 14:30',
-    tags: ['quality', 'medical'],
-    status: 'completed'
-  },
-  {
-    id: '2',
-    fileName: '2024年度质量报告.docx',
-    fileType: 'docx',
-    fileSize: '1.8 MB',
-    uploadTime: '2024-01-15 10:15',
-    tags: ['quality'],
-    status: 'completed'
-  },
-  {
-    id: '3',
-    fileName: '质量指标统计表.xlsx',
-    fileType: 'xlsx',
-    fileSize: '856 KB',
-    uploadTime: '2024-01-14 16:45',
-    tags: ['quality', 'training'],
-    status: 'completed'
-  },
-  {
-    id: '4',
-    fileName: '培训计划.pptx',
-    fileType: 'pptx',
-    fileSize: '3.2 MB',
-    uploadTime: '2024-01-14 09:30',
-    tags: ['training'],
-    status: 'processing'
-  }
-])
+const selectedDocuments = ref<DocumentType[]>([])
 
 // 编辑标签对话框
 const editTagsDialog = reactive({
   visible: false,
-  document: null as DocumentItem | null,
+  document: null as DocumentType | null,
   newTags: [] as string[]
 })
 
@@ -301,49 +307,71 @@ const availableTags = [
   { value: 'standard', label: '标准规范' }
 ]
 
-// 筛选后的文档
-const filteredDocuments = computed(() => {
-  let result = documents.value
+// 文件类型选项
+const fileTypeOptions = [
+  { value: 'pdf', label: 'PDF文档' },
+  { value: 'doc', label: 'Word文档' },
+  { value: 'docx', label: 'Word文档' },
+  { value: 'xls', label: 'Excel表格' },
+  { value: 'xlsx', label: 'Excel表格' },
+  { value: 'ppt', label: 'PPT演示文稿' },
+  { value: 'pptx', label: 'PPT演示文稿' }
+]
 
-  // 搜索筛选
-  if (searchQuery.value) {
-    result = result.filter(doc => 
-      doc.fileName.toLowerCase().includes(searchQuery.value.toLowerCase())
-    )
+// 计算属性
+const documents = computed(() => documentStore.documents)
+const loading = computed(() => documentStore.loading)
+const totalDocuments = computed(() => documentStore.total)
+const currentPage = computed({
+  get: () => documentStore.currentPage,
+  set: (value) => fetchDocuments({ page: value })
+})
+const pageSize = computed({
+  get: () => documentStore.pageSize,
+  set: (value) => fetchDocuments({ pageSize: value, page: 1 })
+})
+
+// 获取文档数据
+const fetchDocuments = async (query = {}) => {
+  try {
+    await documentStore.fetchDocuments({
+      search: searchQuery.value || undefined,
+      fileType: selectedType.value ? [selectedType.value] : undefined,
+      tags: selectedTag.value ? [selectedTag.value] : undefined,
+      ...query
+    })
+  } catch (error) {
+    ElMessage.error('获取文档列表失败')
   }
+}
 
-  // 类型筛选
-  if (selectedType.value) {
-    result = result.filter(doc => doc.fileType === selectedType.value)
-  }
+// 生命周期
+onMounted(() => {
+  fetchDocuments()
+})
 
-  // 标签筛选
-  if (selectedTag.value) {
-    result = result.filter(doc => doc.tags.includes(selectedTag.value))
-  }
-
-  return result
+// 监听筛选条件变化
+watch([searchQuery, selectedType, selectedTag], () => {
+  fetchDocuments({ page: 1 })
 })
 
 // 处理搜索
 const handleSearch = () => {
-  currentPage.value = 1
-  // 这里可以调用API重新获取数据
+  fetchDocuments({ page: 1 })
 }
 
 // 处理选择变化
-const handleSelectionChange = (val: DocumentItem[]) => {
+const handleSelectionChange = (val: DocumentType[]) => {
   selectedDocuments.value = val
 }
 
 // 处理分页
 const handleSizeChange = (val: number) => {
-  pageSize.value = val
-  currentPage.value = 1
+  fetchDocuments({ pageSize: val, page: 1 })
 }
 
 const handleCurrentChange = (val: number) => {
-  currentPage.value = val
+  fetchDocuments({ page: val })
 }
 
 // 按标签筛选
@@ -407,9 +435,9 @@ const getTagText = (tag: string) => {
 // 获取状态类型
 const getStatusType = (status: string) => {
   const typeMap: Record<string, string> = {
-    processing: 'warning',
-    completed: 'success',
-    failed: 'danger'
+    Processing: 'warning',
+    Completed: 'success',
+    Failed: 'danger'
   }
   return typeMap[status] || 'info'
 }
@@ -417,40 +445,54 @@ const getStatusType = (status: string) => {
 // 获取状态文本
 const getStatusText = (status: string) => {
   const textMap: Record<string, string> = {
-    processing: '解析中',
-    completed: '已完成',
-    failed: '失败'
+    Processing: '解析中',
+    Completed: '已完成',
+    Failed: '失败'
   }
   return textMap[status] || '未知'
 }
 
 // 查看文档
-const viewDocument = (row: DocumentItem) => {
-  ElMessage.info(`查看文档: ${row.fileName}`)
+const viewDocument = (row: DocumentType) => {
+  router.push(`/system/documents/${row.id}`)
 }
 
 // 下载文档
-const downloadDocument = (row: DocumentItem) => {
-  ElMessage.success(`开始下载: ${row.fileName}`)
+const downloadDocument = async (row: DocumentType) => {
+  try {
+    const success = await documentStore.downloadDocument(row.id, row.filename)
+    if (success) {
+      ElMessage.success(`开始下载: ${row.filename}`)
+    } else {
+      ElMessage.error('下载失败')
+    }
+  } catch (error) {
+    ElMessage.error('下载失败')
+  }
 }
 
 // 编辑标签
-const editTags = (row: DocumentItem) => {
+const editTags = (row: DocumentType) => {
   editTagsDialog.document = row
   editTagsDialog.newTags = [...row.tags]
   editTagsDialog.visible = true
 }
 
 // 分享文档
-const shareDocument = (row: DocumentItem) => {
-  ElMessage.info(`分享文档: ${row.fileName}`)
+const shareDocument = (row: DocumentType) => {
+  const shareUrl = `${window.location.origin}/documents/${row.id}`
+  navigator.clipboard.writeText(shareUrl).then(() => {
+    ElMessage.success('分享链接已复制到剪贴板')
+  }).catch(() => {
+    ElMessage.warning('复制失败，请手动复制链接')
+  })
 }
 
 // 删除文档
-const deleteDocument = async (row: DocumentItem) => {
+const deleteDocument = async (row: DocumentType) => {
   try {
     await ElMessageBox.confirm(
-      `确定要删除文档 "${row.fileName}" 吗？`,
+      `确定要删除文档 "${row.filename}" 吗？`,
       '确认删除',
       {
         confirmButtonText: '确定',
@@ -459,11 +501,12 @@ const deleteDocument = async (row: DocumentItem) => {
       }
     )
     
-    const index = documents.value.findIndex(item => item.id === row.id)
-    if (index > -1) {
-      documents.value.splice(index, 1)
+    const success = await documentStore.deleteDocument(row.id)
+    if (success) {
+      ElMessage.success('删除成功')
+    } else {
+      ElMessage.error('删除失败')
     }
-    ElMessage.success('删除成功')
   } catch {
     // 用户取消删除
   }
@@ -480,12 +523,82 @@ const removeTag = (tag: string) => {
 }
 
 // 保存标签
-const saveTags = () => {
+const saveTags = async () => {
   if (editTagsDialog.document && editTagsDialog.newTags) {
-    editTagsDialog.document.tags = [...editTagsDialog.newTags]
-    editTagsDialog.visible = false
-    ElMessage.success('标签更新成功')
+    const success = await documentStore.updateDocumentTags(
+      editTagsDialog.document.id,
+      editTagsDialog.newTags
+    )
+    if (success) {
+      editTagsDialog.visible = false
+      ElMessage.success('标签更新成功')
+    } else {
+      ElMessage.error('标签更新失败')
+    }
   }
+}
+
+// 重置筛选条件
+const resetFilters = () => {
+  searchQuery.value = ''
+  selectedType.value = ''
+  selectedTag.value = ''
+  dateRange.value = null
+  fetchDocuments({ page: 1 })
+}
+
+// 批量删除
+const batchDelete = async () => {
+  if (selectedDocuments.value.length === 0) return
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedDocuments.value.length} 个文档吗？`,
+      '确认批量删除',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+    
+    const documentIds = selectedDocuments.value.map(doc => doc.id)
+    const success = await documentStore.deleteDocuments(documentIds)
+    if (success) {
+      ElMessage.success('批量删除成功')
+      selectedDocuments.value = []
+    } else {
+      ElMessage.error('批量删除失败')
+    }
+  } catch {
+    // 用户取消删除
+  }
+}
+
+// 批量下载
+const batchDownload = async () => {
+  if (selectedDocuments.value.length === 0) return
+  
+  ElMessage.info('开始批量下载，请稍候...')
+  
+  for (const doc of selectedDocuments.value) {
+    try {
+      await documentStore.downloadDocument(doc.id, doc.filename)
+      // 添加短暂延迟避免同时下载过多文件
+      await new Promise(resolve => setTimeout(resolve, 500))
+    } catch (error) {
+      ElMessage.error(`下载失败: ${doc.filename}`)
+    }
+  }
+  
+  ElMessage.success('批量下载完成')
+}
+
+// 批量编辑标签
+const batchUpdateTags = () => {
+  if (selectedDocuments.value.length === 0) return
+  
+  ElMessage.info('批量编辑标签功能开发中...')
 }
 </script>
 

@@ -140,7 +140,7 @@
         <el-button 
           type="primary" 
           class="h-24 flex flex-col items-center justify-center space-y-2"
-          @click="$router.push('/upload')"
+          @click="$router.push('/system/upload')"
         >
           <el-icon size="24"><Upload /></el-icon>
           <span>上传文档</span>
@@ -148,7 +148,7 @@
         
         <el-button 
           class="h-24 flex flex-col items-center justify-center space-y-2"
-          @click="$router.push('/chat')"
+          @click="$router.push('/system/chat')"
         >
           <el-icon size="24"><ChatDotRound /></el-icon>
           <span>智能问答</span>
@@ -156,7 +156,7 @@
         
         <el-button 
           class="h-24 flex flex-col items-center justify-center space-y-2"
-          @click="$router.push('/search')"
+          @click="$router.push('/system/search')"
         >
           <el-icon size="24"><Search /></el-icon>
           <span>文档搜索</span>
@@ -164,7 +164,7 @@
         
         <el-button 
           class="h-24 flex flex-col items-center justify-center space-y-2"
-          @click="$router.push('/tags')"
+          @click="$router.push('/system/tags')"
         >
           <el-icon size="24"><CollectionTag /></el-icon>
           <span>标签管理</span>
