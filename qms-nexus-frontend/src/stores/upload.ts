@@ -37,6 +37,7 @@ export const useUploadStore = defineStore('upload', () => {
   const currentUploads = ref(0)
   const autoRetry = ref(true)
   const retryCount = ref(3)
+  const isProcessingQueue = ref(false)  // 防止重复执行的锁
   
   // 计算属性
   const pendingUploads = computed(() => 
@@ -97,13 +98,28 @@ export const useUploadStore = defineStore('upload', () => {
    * 处理上传队列
    */
   async function processUploadQueue(): Promise<void> {
+    // 防止重复执行
+    if (isProcessingQueue.value) return
     if (!canUploadMore.value) return
     
-    const filesToUpload = pendingUploads.value.slice(0, maxConcurrentUploads.value - currentUploads.value)
+    isProcessingQueue.value = true
     
-    // 使用异步方式避免递归调用问题
-    const uploadPromises = filesToUpload.map(file => uploadFile(file))
-    await Promise.allSettled(uploadPromises)
+    try {
+      const filesToUpload = pendingUploads.value.slice(0, maxConcurrentUploads.value - currentUploads.value)
+      
+      // 使用异步方式避免递归调用问题
+      const uploadPromises = filesToUpload.map(file => uploadFile(file))
+      await Promise.allSettled(uploadPromises)
+    } finally {
+      isProcessingQueue.value = false
+      
+      // 检查是否还有待上传文件，如果有则继续处理
+      if (pendingUploads.value.length > 0 && canUploadMore.value) {
+        setTimeout(() => {
+          processUploadQueue()
+        }, 100)
+      }
+    }
   }
   
   /**
@@ -148,11 +164,7 @@ export const useUploadStore = defineStore('upload', () => {
         retryUpload(uploadFile)
       }
     }
-    
-    // 延迟处理下一个文件，避免递归调用
-    setTimeout(() => {
-      processUploadQueue()
-    }, 100)
+    // 不再在这里调用 processUploadQueue，由外层统一管理
   }
   
   /**
@@ -191,10 +203,7 @@ export const useUploadStore = defineStore('upload', () => {
       }
     } finally {
       currentUploads.value--
-      // 延迟处理下一个文件，避免递归调用
-      setTimeout(() => {
-        processUploadQueue()
-      }, 100)
+      // 不再在这里调用 processUploadQueue，由外层统一管理
     }
   }
   
@@ -211,9 +220,12 @@ export const useUploadStore = defineStore('upload', () => {
     uploadFile.currentStep = undefined
     uploadFile.result = undefined
     
-    // 延迟后重试
+    // 延迟后重试 - 通过触发 processUploadQueue 来处理
     setTimeout(() => {
-      processUploadQueue()
+      // 只有当前没有在处理队列时才触发
+      if (!isProcessingQueue.value) {
+        processUploadQueue()
+      }
     }, 2000)
   }
   
@@ -345,6 +357,7 @@ export const useUploadStore = defineStore('upload', () => {
     currentUploads,
     autoRetry,
     retryCount,
+    isProcessingQueue,
     
     // 计算属性
     pendingUploads,
