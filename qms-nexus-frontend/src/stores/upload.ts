@@ -13,6 +13,7 @@ export interface UploadFile {
   error?: string
   currentStep?: string
   estimatedTime?: number
+  retryCount?: number  // 重试次数
   result?: {
     documentId: string
     chunksCount: number
@@ -78,7 +79,8 @@ export const useUploadStore = defineStore('upload', () => {
       id: generateFileId(),
       file,
       status: 'pending',
-      progress: 0
+      progress: 0,
+      retryCount: 0
     }))
     
     uploadQueue.value.push(...uploadFiles)
@@ -113,11 +115,11 @@ export const useUploadStore = defineStore('upload', () => {
     } finally {
       isProcessingQueue.value = false
       
-      // 检查是否还有待上传文件，如果有则继续处理
-      if (pendingUploads.value.length > 0 && canUploadMore.value) {
+      // 检查是否还有待上传文件，如果有则继续处理（但最多只递归一次，避免无限循环）
+      if (pendingUploads.value.length > 0 && canUploadMore.value && !isProcessingQueue.value) {
         setTimeout(() => {
           processUploadQueue()
-        }, 100)
+        }, 500)  // 增加延迟，避免过快循环
       }
     }
   }
@@ -167,8 +169,10 @@ export const useUploadStore = defineStore('upload', () => {
       currentUploads.value--
       uploadingFileIds.delete(uploadFile.id)
       
-      // 自动重试
-      if (autoRetry.value) {
+      // 自动重试 - 通过 retryUpload 处理，它会重置状态并触发 processUploadQueue
+      // 但只在未达到最大重试次数时才重试
+      const currentRetryCount = uploadFile.retryCount || 0
+      if (autoRetry.value && currentRetryCount < retryCount.value) {
         retryUpload(uploadFile)
       }
     }
@@ -205,13 +209,17 @@ export const useUploadStore = defineStore('upload', () => {
       uploadFile.status = 'failed'
       uploadFile.error = err instanceof Error ? err.message : '处理失败'
       
-      // 自动重试
-      if (autoRetry.value) {
+      // 自动重试 - 检查重试次数
+      const currentRetryCount = uploadFile.retryCount || 0
+      if (autoRetry.value && currentRetryCount < retryCount.value) {
         retryUpload(uploadFile)
       }
     } finally {
       currentUploads.value--
-      uploadingFileIds.delete(uploadFile.id)  // 清理已完成/失败的文件ID
+      // 只有文件没有被重试（状态不是 pending）时才清理 ID
+      if (uploadFile.status !== 'pending') {
+        uploadingFileIds.delete(uploadFile.id)
+      }
       // 不再在这里调用 processUploadQueue，由外层统一管理
     }
   }
@@ -220,14 +228,23 @@ export const useUploadStore = defineStore('upload', () => {
    * 重试上传
    */
   async function retryUpload(uploadFile: UploadFile): Promise<void> {
-    if (!autoRetry.value) return
+    // 检查重试次数限制
+    const currentRetryCount = uploadFile.retryCount || 0
+    const maxRetries = retryCount.value
     
-    // 重置状态
+    if (currentRetryCount >= maxRetries) {
+      uploadFile.status = 'failed'
+      uploadFile.error = `上传失败，已达到最大重试次数 (${maxRetries})`
+      return
+    }
+    
+    // 重置状态并增加重试计数
     uploadFile.status = 'pending'
     uploadFile.progress = 0
     uploadFile.error = undefined
     uploadFile.currentStep = undefined
     uploadFile.result = undefined
+    uploadFile.retryCount = currentRetryCount + 1
     
     // 延迟后重试 - 通过触发 processUploadQueue 来处理
     setTimeout(() => {
