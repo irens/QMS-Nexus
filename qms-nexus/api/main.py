@@ -5,6 +5,7 @@ FastAPI 异步问答接口
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import sys
 
 from api.routes.health import router as health_router
 from api.routes.upload import router as upload_router
@@ -13,6 +14,7 @@ from api.routes.tags import router as tags_router
 from api.routes.system import router as system_router
 from core.rag_service import RAGService
 from core.logger import get_logger
+from core.cache import check_redis_connection
 
 logger = get_logger(__name__)
 
@@ -27,6 +29,23 @@ class AskResponse(BaseModel):
 
 
 app = FastAPI(title="QMS-Nexus API", version="0.1.0")
+
+
+# 启动时检测 Redis 连接
+@app.on_event("startup")
+async def startup_event():
+    print("\n" + "="*60)
+    print("🔍 正在检查 Redis 连接...")
+    print("="*60)
+    
+    success, message = check_redis_connection()
+    print(message)
+    
+    if not success:
+        print("\n⚠️  警告：Redis 连接失败，部分功能将不可用！")
+        print("="*60 + "\n")
+    else:
+        print("="*60 + "\n")
 
 # 配置CORS中间件
 app.add_middleware(
