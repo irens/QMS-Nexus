@@ -82,8 +82,8 @@ export const useUploadStore = defineStore('upload', () => {
     
     uploadQueue.value.push(...uploadFiles)
     
-    // 自动开始上传
-    processUploadQueue()
+    // 不再自动开始上传，需要用户手动点击"开始上传"按钮
+    // 避免重复上传问题
   }
 
   /**

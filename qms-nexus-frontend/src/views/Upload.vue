@@ -619,8 +619,17 @@ const getProgressStatus = (status: string) => {
   @apply cursor-not-allowed;
 }
 
+.upload-dropzone.is-uploading .upload-content {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
 .upload-content {
   @apply space-y-4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .upload-icon {
