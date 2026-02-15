@@ -122,11 +122,18 @@ export const useUploadStore = defineStore('upload', () => {
     }
   }
   
+  // 跟踪正在上传的文件ID，防止重复
+  const uploadingFileIds = new Set<string>()
+  
   /**
    * 上传单个文件
    */
   async function uploadFile(uploadFile: UploadFile): Promise<void> {
+    // 多重检查防止重复上传
     if (uploadFile.status !== 'pending') return
+    if (uploadingFileIds.has(uploadFile.id)) return
+    
+    uploadingFileIds.add(uploadFile.id)
     
     try {
       uploadFile.status = 'uploading'
@@ -158,6 +165,7 @@ export const useUploadStore = defineStore('upload', () => {
       uploadFile.status = 'failed'
       uploadFile.error = err instanceof Error ? err.message : '上传失败'
       currentUploads.value--
+      uploadingFileIds.delete(uploadFile.id)
       
       // 自动重试
       if (autoRetry.value) {
@@ -203,6 +211,7 @@ export const useUploadStore = defineStore('upload', () => {
       }
     } finally {
       currentUploads.value--
+      uploadingFileIds.delete(uploadFile.id)  // 清理已完成/失败的文件ID
       // 不再在这里调用 processUploadQueue，由外层统一管理
     }
   }

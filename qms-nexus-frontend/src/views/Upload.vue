@@ -397,9 +397,14 @@ const processFiles = (files: File[]) => {
   }
 }
 
-// 上传控制
+// 上传控制 - 防止重复点击
+let isStartingUpload = false
 const startUpload = async () => {
+  // 防止重复点击
+  if (isStartingUpload) return
   if (!canStartUpload.value) return
+  
+  isStartingUpload = true
   
   try {
     await uploadStore.processUploadQueue()
@@ -417,6 +422,11 @@ const startUpload = async () => {
       message: error instanceof Error ? error.message : '上传过程中发生错误',
       read: false
     })
+  } finally {
+    // 延迟重置，防止快速点击
+    setTimeout(() => {
+      isStartingUpload = false
+    }, 500)
   }
 }
 
