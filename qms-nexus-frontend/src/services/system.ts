@@ -18,7 +18,7 @@ export class SystemService {
    * 更新系统配置
    */
   async updateSystemConfig(config: Partial<SystemConfig>): Promise<SystemConfig> {
-    return apiClient.put<SystemConfig>('/system/config', config)
+    return apiClient.put<SystemConfig>('/config', config)
   }
 
   /**
