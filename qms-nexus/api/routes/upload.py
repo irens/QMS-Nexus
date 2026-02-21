@@ -5,9 +5,9 @@ import asyncio
 import uuid
 import time
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from pydantic import BaseModel
 
 from services.document_service import DocumentService
@@ -23,11 +23,21 @@ tasks: Dict[str, dict] = {}
 class UploadResponse(BaseModel):
     task_id: str
     status: str  # Pending / Processing / Completed / Failed
+    collection: str  # 目标知识库
 
 
 @router.post("/upload", response_model=UploadResponse)
-async def upload(file: UploadFile = File(...)):
-    """上传单文件，≤50 MB，即刻返回任务 ID。"""
+async def upload(
+    file: UploadFile = File(...),
+    collection: Optional[str] = Form("qms_docs", description="目标知识库名称")
+):
+    """
+    上传单文件到指定知识库，≤50 MB，即刻返回任务 ID。
+    
+    Args:
+        file: 上传的文件
+        collection: 目标知识库名称（默认 qms_docs）
+    """
     t0 = time.time()
     status = "ok"
     # 基础校验
@@ -43,7 +53,7 @@ async def upload(file: UploadFile = File(...)):
         raise HTTPException(status_code=413, detail="文件超过 50 MB")
 
     task_id = str(uuid.uuid4())
-    tasks[task_id] = {"status": "Pending", "filename": file.filename}
+    tasks[task_id] = {"status": "Pending", "filename": file.filename, "collection": collection}
 
     # 落盘（临时目录）并后台解析
     tmp_dir = Path("./tmp_uploads")
@@ -53,12 +63,13 @@ async def upload(file: UploadFile = File(...)):
         f.write(await file.read())
 
     # 后台解析（阶段三换 Redis+Worker）
-    asyncio.create_task(svc.process(task_id, file_path, file.content_type))
+    # TODO: 将 collection 传递到 document_service
+    asyncio.create_task(svc.process(task_id, file_path, file.content_type, collection))
 
     cost = time.time() - t0
     upload_duration.observe(cost)
     upload_counter.labels(status=status).inc()
-    return UploadResponse(task_id=task_id, status="Pending")
+    return UploadResponse(task_id=task_id, status="Pending", collection=collection)
 
 
 @router.get("/upload/status/{task_id}", response_model=UploadResponse)
@@ -67,4 +78,8 @@ def get_status(task_id: str):
     t = tasks.get(task_id)
     if not t:
         raise HTTPException(status_code=404, detail="任务不存在")
-    return UploadResponse(task_id=task_id, status=t["status"])
+    return UploadResponse(
+        task_id=task_id, 
+        status=t["status"],
+        collection=t.get("collection", "qms_docs")
+    )

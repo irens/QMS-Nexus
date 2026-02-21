@@ -1,8 +1,12 @@
 // 文件上传服务
 import { apiClient } from './api'
-import type { 
-  UploadTask
-} from '@/types/api'
+import { knowledgeBaseService } from './knowledgeBase'
+import type { UploadTask } from '@/types/api'
+
+export interface UploadOptions {
+  collection?: string
+  onProgress?: (progress: number) => void
+}
 
 /**
  * 文件上传服务
@@ -11,11 +15,29 @@ export class UploadService {
   /**
    * 上传文件
    * @param file - 文件对象
-   * @param onProgress - 进度回调函数
+   * @param options - 上传选项
    * @returns 上传任务信息
    */
-  async uploadFile(file: File, onProgress?: (progress: number) => void): Promise<UploadTask> {
-    return apiClient.upload<UploadTask>('/upload', file, onProgress)
+  async uploadFile(file: File, options?: UploadOptions): Promise<UploadTask> {
+    const collection = options?.collection || knowledgeBaseService.getCurrentCollection()
+    
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('collection', collection)
+    
+    const response = await apiClient.post<UploadTask>('/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      },
+      onUploadProgress: (progressEvent) => {
+        if (progressEvent.total && options?.onProgress) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          options.onProgress(progress)
+        }
+      }
+    })
+    
+    return response
   }
   
   /**
@@ -83,20 +105,26 @@ export class UploadService {
   /**
    * 批量上传文件
    * @param files - 文件列表
-   * @param onProgress - 每个文件的进度回调
+   * @param options - 上传选项
    * @returns 上传任务列表
    */
   async uploadFiles(
     files: File[], 
-    onProgress?: (file: File, progress: number) => void
+    options?: {
+      collection?: string
+      onProgress?: (file: File, progress: number) => void
+    }
   ): Promise<UploadTask[]> {
     const tasks: UploadTask[] = []
     
     for (const file of files) {
       try {
-        const task = await this.uploadFile(file, (progress) => {
-          if (onProgress) {
-            onProgress(file, progress)
+        const task = await this.uploadFile(file, {
+          collection: options?.collection,
+          onProgress: (progress) => {
+            if (options?.onProgress) {
+              options.onProgress(file, progress)
+            }
           }
         })
         tasks.push(task)

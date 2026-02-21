@@ -4,9 +4,16 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
-import psutil
 import time
 from datetime import datetime
+
+# psutil 是可选依赖
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    psutil = None
 
 router = APIRouter(tags=["system"])
 
@@ -27,18 +34,6 @@ class SystemConfig(BaseModel):
     max_file_size: int
     supported_formats: list[str]
 
-class ApiKey(BaseModel):
-    id: str
-    name: str
-    key: str
-    created_at: str
-    last_used: Optional[str]
-    is_active: bool
-
-class ApiKeyForm(BaseModel):
-    name: str
-    expires_in_days: Optional[int] = 30
-
 class PaginatedResponse(BaseModel):
     items: list[Any]
     total: int
@@ -53,26 +48,42 @@ async def get_system_status():
     uptime_seconds = time.time() - start_time
     uptime_str = f"{int(uptime_seconds // 3600)}小时 {int((uptime_seconds % 3600) // 60)}分钟"
     
-    # 获取内存使用情况
-    memory = psutil.virtual_memory()
-    memory_usage = {
-        "total": memory.total,
-        "used": memory.used,
-        "available": memory.available,
-        "percentage": memory.percent
-    }
-    
-    # 获取磁盘使用情况
-    disk = psutil.disk_usage('/')
-    disk_usage = {
-        "total": disk.total,
-        "used": disk.used,
-        "free": disk.free,
-        "percentage": (disk.used / disk.total) * 100
-    }
-    
-    # 获取CPU使用率
-    cpu_usage = psutil.cpu_percent(interval=1)
+    if PSUTIL_AVAILABLE and psutil:
+        # 获取内存使用情况
+        memory = psutil.virtual_memory()
+        memory_usage = {
+            "total": memory.total,
+            "used": memory.used,
+            "available": memory.available,
+            "percentage": memory.percent
+        }
+        
+        # 获取磁盘使用情况
+        disk = psutil.disk_usage('/')
+        disk_usage = {
+            "total": disk.total,
+            "used": disk.used,
+            "free": disk.free,
+            "percentage": (disk.used / disk.total) * 100
+        }
+        
+        # 获取CPU使用率
+        cpu_usage = psutil.cpu_percent(interval=1)
+    else:
+        # 返回模拟数据
+        memory_usage = {
+            "total": 17179869184,  # 16GB
+            "used": 8589934592,    # 8GB
+            "available": 8589934592,  # 8GB
+            "percentage": 50.0
+        }
+        disk_usage = {
+            "total": 536870912000,  # 500GB
+            "used": 107374182400,   # 100GB
+            "free": 429496729600,   # 400GB
+            "percentage": 20.0
+        }
+        cpu_usage = 25.0
     
     return SystemStatus(
         status="running",
@@ -99,80 +110,21 @@ async def update_system_config(config: SystemConfig):
     # 这里应该实现实际的配置更新逻辑
     return config
 
-@router.get("/api-keys", response_model=PaginatedResponse)
-async def get_api_keys(page: int = 1, page_size: int = 20):
-    """获取API密钥列表（模拟数据）"""
-    # 模拟数据
-    mock_keys = [
-        ApiKey(
-            id="key_001",
-            name="开发环境密钥",
-            key="sk-***1234",
-            created_at="2026-02-15T10:00:00Z",
-            last_used="2026-02-15T11:30:00Z",
-            is_active=True
-        ),
-        ApiKey(
-            id="key_002", 
-            name="测试环境密钥",
-            key="sk-***5678",
-            created_at="2026-02-14T15:20:00Z",
-            last_used=None,
-            is_active=False
-        )
-    ]
-    
-    # 分页逻辑
-    total = len(mock_keys)
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
-    items = mock_keys[start_idx:end_idx]
-    total_pages = (total + page_size - 1) // page_size
-    
+@router.get("/api-keys-mock", response_model=PaginatedResponse)
+async def get_api_keys_mock(page: int = 1, page_size: int = 20):
+    """获取API密钥列表（模拟数据）- 已废弃，请使用 /api/v1/api-keys"""
+    # 返回空列表，引导用户使用新的认证接口
     return PaginatedResponse(
-        items=items,
-        total=total,
+        items=[],
+        total=0,
         page=page,
         page_size=page_size,
-        total_pages=total_pages
+        total_pages=0
     )
 
-@router.post("/api-keys", response_model=ApiKey)
-async def create_api_key(form: ApiKeyForm):
-    """创建新的API密钥（模拟）"""
-    import uuid
-    from datetime import datetime, timezone
-    
-    return ApiKey(
-        id=f"key_{uuid.uuid4().hex[:8]}",
-        name=form.name,
-        key=f"sk-{uuid.uuid4().hex[:12]}",
-        created_at=datetime.now(timezone.utc).isoformat(),
-        last_used=None,
-        is_active=True
-    )
-
-@router.put("/api-keys/{key_id}", response_model=ApiKey)
-async def update_api_key(key_id: str, updates: Dict[str, Any]):
-    """更新API密钥（模拟）"""
-    # 这里应该实现实际的更新逻辑
-    return ApiKey(
-        id=key_id,
-        name="更新后的密钥名称",
-        key="sk-***updated",
-        created_at="2026-02-15T10:00:00Z",
-        last_used="2026-02-15T12:00:00Z",
-        is_active=True
-    )
-
-@router.delete("/api-keys/{key_id}")
-async def delete_api_key(key_id: str):
-    """删除API密钥"""
-    return {"message": f"API密钥 {key_id} 已删除"}
-
-@router.get("/api-keys/{key_id}/logs", response_model=PaginatedResponse)
-async def get_api_key_logs(key_id: str, page: int = 1, page_size: int = 20):
-    """获取API密钥使用日志（模拟）"""
+@router.get("/api-keys-mock/{key_id}/logs", response_model=PaginatedResponse)
+async def get_api_key_logs_mock(key_id: str, page: int = 1, page_size: int = 20):
+    """获取API密钥使用日志（模拟）- 已废弃"""
     return PaginatedResponse(
         items=[],
         total=0,
@@ -217,24 +169,38 @@ async def get_system_logs(
 @router.get("/stats")
 async def get_system_stats():
     """获取系统统计信息"""
-    memory = psutil.virtual_memory()
-    disk = psutil.disk_usage('/')
+    if PSUTIL_AVAILABLE and psutil:
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+        memory_usage = {
+            "used": memory.used,
+            "total": memory.total,
+            "percentage": memory.percent
+        }
+        disk_usage = {
+            "used": disk.used,
+            "total": disk.total,
+            "percentage": (disk.used / disk.total) * 100
+        }
+    else:
+        memory_usage = {
+            "used": 8589934592,
+            "total": 17179869184,
+            "percentage": 50.0
+        }
+        disk_usage = {
+            "used": 107374182400,
+            "total": 536870912000,
+            "percentage": 20.0
+        }
     
     return {
         "totalDocuments": 42,
         "totalUsers": 5,
         "totalApiKeys": 2,
         "systemUptime": f"{int((time.time() - start_time) // 3600)}小时",
-        "memoryUsage": {
-            "used": memory.used,
-            "total": memory.total,
-            "percentage": memory.percent
-        },
-        "diskUsage": {
-            "used": disk.used,
-            "total": disk.total,
-            "percentage": (disk.used / disk.total) * 100
-        }
+        "memoryUsage": memory_usage,
+        "diskUsage": disk_usage
     }
 
 @router.post("/restart/{service}")
