@@ -3,7 +3,6 @@
 arq Worker 启动入口
 用法：python scripts/worker.py
 """
-import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -16,13 +15,19 @@ from core.worker import WorkerSettings
 logging.basicConfig(level=logging.INFO)
 
 
-async def main():
+def main():
     from arq import Worker
-    await Worker(
+    import asyncio
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    worker = Worker(
         functions=WorkerSettings.functions,
         redis_settings=WorkerSettings.redis_settings,
-    ).run()
+    )
+    loop.run_until_complete(worker.run())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

@@ -17,7 +17,6 @@
         @drop="handleDrop"
         @dragover="handleDragOver"
         @dragleave="handleDragLeave"
-        @click="triggerFileSelect"
       >
         <div class="upload-content">
           <el-icon class="upload-icon" size="64">
@@ -188,12 +187,12 @@
         <el-table-column label="文件" min-width="250">
           <template #default="{ row }">
             <div class="flex items-center space-x-3">
-              <el-icon :size="24" :color="getFileColor(row.file.name)">
-                <component :is="getFileIcon(row.file.name)" />
+              <el-icon :size="24" :color="getFileColor(row.fileName)">
+                <component :is="getFileIcon(row.fileName)" />
               </el-icon>
               <div>
-                <div class="text-sm font-medium">{{ row.file.name }}</div>
-                <div class="text-xs text-gray-500">{{ formatFileSize(row.file.size) }}</div>
+                <div class="text-sm font-medium">{{ row.fileName }}</div>
+                <div class="text-xs text-gray-500">{{ formatFileSize(row.fileSize) }}</div>
               </div>
             </div>
           </template>
@@ -257,11 +256,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessageBox } from 'element-plus'
-import { useUploadStore } from '@/stores/upload'
+import { useUploadStore, type UploadHistoryItem } from '@/stores/upload'
 import { useSystemStore } from '@/stores/system'
 import { formatFileSize, formatDateTime, formatDuration } from '@/utils/format'
 import { getFileExtension, getFileIcon, getFileColor, validateFileType, validateFileSize } from '@/utils/file'
-import type { UploadFile as UploadFileType } from '@/types/api'
 
 // 图标导入
 import {
@@ -300,7 +298,8 @@ const totalSize = computed(() =>
 
 // 生命周期
 onMounted(() => {
-  // 可以在这里加载上传历史
+  // 重置上传状态，防止页面刷新后状态异常
+  uploadStore.resetUploadState()
 })
 
 // 拖拽处理
@@ -442,15 +441,15 @@ const clearAllFiles = () => {
 }
 
 // 文件操作
-const removeFile = (file: UploadFileType) => {
+const removeFile = (file: any) => {
   try {
-    // 从上传队列或历史记录中移除文件
     uploadStore.removeFile(file.id)
     
+    const fileName = file.file?.name || file.fileName || '未知文件'
     systemStore.addNotification({
       type: 'info',
       title: '文件已移除',
-      message: `已从列表中移除 ${file.file.name}`,
+      message: `已从列表中移除 ${fileName}`,
       read: false
     })
   } catch (error) {
@@ -463,21 +462,20 @@ const removeFile = (file: UploadFileType) => {
   }
 }
 
-const retryFile = async (file: UploadFileType) => {
+const retryFile = async (file: any) => {
   try {
-    // 重置文件状态
     file.status = 'pending'
     file.progress = 0
     file.error = undefined
     file.currentStep = undefined
     
-    // 重新处理上传队列
     await uploadStore.processUploadQueue()
     
+    const fileName = file.file?.name || file.fileName || '未知文件'
     systemStore.addNotification({
       type: 'success',
       title: '重试开始',
-      message: `正在重新上传 ${file.file.name}`,
+      message: `正在重新上传 ${fileName}`,
       read: false
     })
   } catch (error) {
@@ -491,10 +489,8 @@ const retryFile = async (file: UploadFileType) => {
 }
 
 // 文档查看
-const viewDocument = (file: UploadFileType) => {
+const viewDocument = (file: any) => {
   if (file.result?.documentId) {
-    // 跳转到文档详情页
-    // router.push(`/system/documents/${file.result.documentId}`)
     systemStore.addNotification({
       type: 'info',
       title: '功能开发中',
@@ -528,9 +524,9 @@ const clearHistory = () => {
   })
 }
 
-const deleteHistoryItem = (file: UploadFileType) => {
+const deleteHistoryItem = (file: UploadHistoryItem) => {
   ElMessageBox.confirm(
-    `确定要删除 "${file.file.name}" 的上传记录吗？`,
+    `确定要删除 "${file.fileName}" 的上传记录吗？`,
     '删除记录',
     {
       confirmButtonText: '确定',
@@ -562,7 +558,7 @@ const deleteHistoryItem = (file: UploadFileType) => {
 }
 
 // 工具函数
-const getFileItemClass = (file: UploadFileType) => {
+const getFileItemClass = (file: any) => {
   return {
     'is-failed': file.status === 'failed',
     'is-completed': file.status === 'completed',

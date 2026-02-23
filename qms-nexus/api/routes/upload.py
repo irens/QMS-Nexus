@@ -12,12 +12,10 @@ from pydantic import BaseModel
 
 from services.document_service import DocumentService
 from core.metrics import upload_counter, upload_duration
+from core.task_store import set_task, get_task
 
 router = APIRouter()
 svc = DocumentService()
-
-# 内存级任务存储（阶段二后续换 Redis）
-tasks: Dict[str, dict] = {}
 
 
 class UploadResponse(BaseModel):
@@ -53,7 +51,7 @@ async def upload(
         raise HTTPException(status_code=413, detail="文件超过 50 MB")
 
     task_id = str(uuid.uuid4())
-    tasks[task_id] = {"status": "Pending", "filename": file.filename, "collection": collection}
+    set_task(task_id, {"status": "Pending", "filename": file.filename, "collection": collection})
 
     # 落盘（临时目录）并后台解析
     tmp_dir = Path("./tmp_uploads")
@@ -75,11 +73,11 @@ async def upload(
 @router.get("/upload/status/{task_id}", response_model=UploadResponse)
 def get_status(task_id: str):
     """查询任务状态"""
-    t = tasks.get(task_id)
+    t = get_task(task_id)
     if not t:
         raise HTTPException(status_code=404, detail="任务不存在")
     return UploadResponse(
-        task_id=task_id, 
+        task_id=task_id,
         status=t["status"],
         collection=t.get("collection", "qms_docs")
     )

@@ -16,6 +16,7 @@ from api.routes.system import router as system_router
 from api.routes.correction import router as correction_router
 from api.routes.auth import router as auth_router
 from api.routes.knowledge_base import router as kb_router
+from api.routes.documents import router as documents_router
 from core.rag_service import RAGService
 from core.logger import get_logger
 from core.cache import check_redis_connection
@@ -85,6 +86,7 @@ app.include_router(tags_router, prefix="/api/v1")
 app.include_router(correction_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(kb_router, prefix="/api/v1")
+app.include_router(documents_router, prefix="/api/v1")
 
 rag = RAGService()
 

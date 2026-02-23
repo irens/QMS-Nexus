@@ -1,11 +1,28 @@
 // 文件上传服务
-import { apiClient } from './api'
+import axios from 'axios'
 import { knowledgeBaseService } from './knowledgeBase'
 import type { UploadTask } from '@/types/api'
+
+const API_BASE_URL = import.meta.env.PROD ? '/api/v1' : 'http://localhost:8000/api/v1'
 
 export interface UploadOptions {
   collection?: string
   onProgress?: (progress: number) => void
+}
+
+interface BackendUploadResponse {
+  task_id: string
+  status: string
+  collection: string
+}
+
+function transformUploadResponse(data: BackendUploadResponse): UploadTask {
+  return {
+    taskId: data.task_id,
+    status: data.status as UploadTask['status'],
+    filename: '',
+    progress: 0
+  }
 }
 
 /**
@@ -25,7 +42,7 @@ export class UploadService {
     formData.append('file', file)
     formData.append('collection', collection)
     
-    const response = await apiClient.post<UploadTask>('/upload', formData, {
+    const response = await axios.post<BackendUploadResponse>(`${API_BASE_URL}/upload`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       },
@@ -37,7 +54,7 @@ export class UploadService {
       }
     })
     
-    return response
+    return transformUploadResponse(response.data)
   }
   
   /**
@@ -46,7 +63,8 @@ export class UploadService {
    * @returns 任务状态信息
    */
   async getTaskStatus(taskId: string): Promise<UploadTask> {
-    return apiClient.get<UploadTask>(`/upload/status/${taskId}`)
+    const response = await axios.get<BackendUploadResponse>(`${API_BASE_URL}/upload/status/${taskId}`)
+    return transformUploadResponse(response.data)
   }
   
   /**
