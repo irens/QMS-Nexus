@@ -10,7 +10,8 @@ from core.vectordb import VectorDBClient
 from services.prompt_service import PromptService
 from core.logger import get_logger
 from core.cache import CacheClient
-from core.correction_service import correction_service
+from core.correction_service import correction_service, calculate_similarity
+from core.config import settings
 
 logger = get_logger(__name__)
 
@@ -58,9 +59,21 @@ class RAGService:
             logger.info("缓存命中", extra={"user": "anonymous", "cost": time.time() - t0})
             return cached["answer"], cached["sources"], cached.get("metadata", {})
 
-        # 1. 优先查询修正库
+        # 1. 优先查询修正库（先精确匹配，再相似度匹配）
         if not skip_correction:
+            correction = None
+            similarity = 1.0
+
+            # 1.1 先尝试精确匹配
             correction = correction_service.find_correction(question)
+
+            # 1.2 精确匹配失败，尝试相似度匹配
+            if not correction:
+                correction, similarity = correction_service.find_correction_with_similarity(
+                    question,
+                    threshold=settings.CORRECTION_MATCH_THRESHOLD
+                )
+
             if correction:
                 answer = correction["correct_answer"]
                 source = "[来源：人工修正答案"
@@ -69,23 +82,25 @@ class RAGService:
                     if correction.get("page_number"):
                         source += f", 第{correction['page_number']}页"
                 source += "]"
-                
+
                 metadata = {
                     "is_corrected": True,
                     "correction_id": correction["id"],
                     "original_answer": correction.get("original_answer"),
                     "source_doc": correction.get("source_doc"),
                     "page_number": correction.get("page_number"),
+                    "similarity": similarity,
                 }
-                
+
                 # 写入缓存
                 self.cache.set(cache_key, {"answer": answer, "sources": [source], "metadata": metadata})
-                
+
                 logger.info(
                     "修正库命中",
                     extra={
                         "user": "anonymous",
                         "correction_id": correction["id"],
+                        "similarity": similarity,
                         "cost": time.time() - t0
                     }
                 )
@@ -102,14 +117,28 @@ class RAGService:
 
         # 3. 生成答案
         system = self.prompt.render({"context": context, "question": question})
-        answer = await self.llm.chat(system=system, user="请回答上述问题。")
+        chat_result = await self.llm.chat(system=system, user="请回答上述问题。")
         
-        metadata = {"is_corrected": False}
+        answer = chat_result.text
+        metadata = {
+            "is_corrected": False,
+            "model_used": chat_result.model_used,
+            "tokens_used": chat_result.tokens_used,
+            "is_fallback": chat_result.is_fallback,
+        }
         
         # 写入缓存
         self.cache.set(cache_key, {"answer": answer, "sources": sources, "metadata": metadata})
         
-        logger.info("完成问答", extra={"user": "anonymous", "cost": time.time() - t0})
+        logger.info(
+            "完成问答",
+            extra={
+                "user": "anonymous",
+                "cost": time.time() - t0,
+                "model": chat_result.model_used,
+                "tokens": chat_result.tokens_used,
+            }
+        )
         return answer, sources, metadata
 
     async def answer_with_feedback(

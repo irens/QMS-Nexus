@@ -5,15 +5,35 @@
 import sqlite3
 import json
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from pathlib import Path
+from difflib import SequenceMatcher
 
 from core.logger import get_logger
+from core.config import settings
 
 logger = get_logger(__name__)
 
 # 数据库文件路径
 DB_PATH = Path("./data/corrections.db")
+
+
+def calculate_similarity(q1: str, q2: str) -> float:
+    """
+    计算两个问题字符串的相似度
+
+    使用difflib.SequenceMatcher计算相似度比率
+
+    Args:
+        q1: 第一个问题
+        q2: 第二个问题
+
+    Returns:
+        相似度比率 (0.0 - 1.0)
+    """
+    if not q1 or not q2:
+        return 0.0
+    return SequenceMatcher(None, q1.lower().strip(), q2.lower().strip()).ratio()
 
 
 class CorrectionService:
@@ -96,8 +116,11 @@ class CorrectionService:
 
     def find_correction(self, question: str) -> Optional[Dict[str, Any]]:
         """
-        查找问题对应的修正答案
-        
+        查找问题对应的修正答案（精确匹配）
+
+        Args:
+            question: 问题字符串
+
         Returns:
             修正记录字典，如果不存在返回None
         """
@@ -105,7 +128,7 @@ class CorrectionService:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 """
-                SELECT * FROM corrections 
+                SELECT * FROM corrections
                 WHERE question = ? AND is_active = 1
                 """,
                 (question.strip(),)
@@ -115,9 +138,62 @@ class CorrectionService:
                 result = dict(row)
                 if result.get("metadata"):
                     result["metadata"] = json.loads(result["metadata"])
-                logger.info(f"修正库命中: question={question[:50]}...")
+                logger.info(f"修正库命中(精确): question={question[:50]}...")
                 return result
             return None
+
+    def find_correction_with_similarity(
+        self,
+        question: str,
+        threshold: Optional[float] = None
+    ) -> Tuple[Optional[Dict[str, Any]], float]:
+        """
+        使用相似度匹配查找修正答案
+
+        遍历所有活跃的修正记录，计算与输入问题的相似度，
+        返回超过阈值的最高匹配项。
+
+        Args:
+            question: 问题字符串
+            threshold: 相似度阈值，默认使用settings.CORRECTION_MATCH_THRESHOLD
+
+        Returns:
+            (修正记录字典, 相似度), 如果没有匹配则返回 (None, 0.0)
+        """
+        if threshold is None:
+            threshold = getattr(settings, 'CORRECTION_MATCH_THRESHOLD', 0.9)
+
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT * FROM corrections
+                WHERE is_active = 1
+                """
+            )
+            rows = cursor.fetchall()
+
+            best_match = None
+            best_similarity = 0.0
+
+            for row in rows:
+                stored_question = row["question"]
+                similarity = calculate_similarity(question, stored_question)
+
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_match = dict(row)
+
+            if best_match and best_similarity >= threshold:
+                if best_match.get("metadata"):
+                    best_match["metadata"] = json.loads(best_match["metadata"])
+                logger.info(
+                    f"修正库命中(相似度): question={question[:50]}... "
+                    f"similarity={best_similarity:.3f}"
+                )
+                return best_match, best_similarity
+
+            return None, best_similarity
 
     def search_corrections(
         self,

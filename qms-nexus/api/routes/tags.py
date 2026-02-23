@@ -1,15 +1,18 @@
 """
-动态标签 CRUD
+动态标签 CRUD（基于数据库存储）
+
+保持现有 API 接口不变，仅将内存存储迁移到 SQLite。
 """
-from typing import List, Dict, Optional
+from typing import List, Optional
 from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-import uuid
+
+from core.database import Tag
+from core.tag_store import TagAlreadyExistsError, TagNotFoundError, tag_store
 
 router = APIRouter()
-
-tags_store: Dict[str, dict] = {}
 
 
 class TagCreate(BaseModel):
@@ -45,22 +48,16 @@ class TagListResponse(BaseModel):
 @router.post("/tags", response_model=TagOut)
 async def create_tag(body: TagCreate):
     """新增标签"""
-    for t in tags_store.values():
-        if t["name"] == body.name:
-            raise HTTPException(status_code=409, detail="标签已存在")
-    
-    tag_id = str(uuid.uuid4())
-    now = datetime.now().isoformat()
-    tags_store[tag_id] = {
-        "id": tag_id,
-        "name": body.name,
-        "description": body.description,
-        "color": body.color,
-        "usageCount": 0,
-        "createdAt": now,
-        "updatedAt": now,
-    }
-    return TagOut(**tags_store[tag_id])
+    try:
+        tag = tag_store.create(
+            name=body.name,
+            description=body.description,
+            color=body.color,
+        )
+    except TagAlreadyExistsError:
+        raise HTTPException(status_code=409, detail="标签已存在")
+
+    return _tag_to_out(tag)
 
 
 @router.get("/tags", response_model=TagListResponse)
@@ -70,43 +67,39 @@ async def list_tags(
     search: Optional[str] = None,
 ):
     """列出全部标签"""
-    items = list(tags_store.values())
-    
-    if search:
-        items = [t for t in items if search.lower() in t["name"].lower()]
-    
-    total = len(items)
-    totalPages = (total + pageSize - 1) // pageSize
-    
-    start = (page - 1) * pageSize
-    end = start + pageSize
-    items = items[start:end]
-    
+    offset = (page - 1) * pageSize
+    tags, total = tag_store.list_all(search=search, offset=offset, limit=pageSize)
+    total_pages = (total + pageSize - 1) // pageSize if pageSize else 1
+
     return TagListResponse(
-        items=[TagOut(**t) for t in items],
+        items=[_tag_to_out(t) for t in tags],
         total=total,
         page=page,
         pageSize=pageSize,
-        totalPages=totalPages
+        totalPages=total_pages,
     )
 
 
 @router.get("/tags/stats")
 async def get_tag_stats():
     """获取标签统计"""
-    items = list(tags_store.values())
-    most_used = sorted(items, key=lambda x: x["usageCount"], reverse=True)[:5]
-    recently_created = sorted(items, key=lambda x: x["createdAt"], reverse=True)[:5]
-    
+    tags, _ = tag_store.list_all()
+    items = [_tag_to_out(t) for t in tags]
+
+    most_used = sorted(items, key=lambda x: x.usageCount, reverse=True)[:5]
+    recently_created = sorted(items, key=lambda x: x.createdAt, reverse=True)[:5]
+
     return {
         "totalTags": len(items),
-        "totalDocuments": sum(t["usageCount"] for t in items),
-        "averageDocumentsPerTag": sum(t["usageCount"] for t in items) / len(items) if items else 0,
+        "totalDocuments": sum(t.usageCount for t in items),
+        "averageDocumentsPerTag": (
+            sum(t.usageCount for t in items) / len(items) if items else 0
+        ),
         "mostUsedTags": [
-            {"tagId": t["id"], "tagName": t["name"], "documentCount": t["usageCount"]}
+            {"tagId": t.id, "tagName": t.name, "documentCount": t.usageCount}
             for t in most_used
         ],
-        "recentlyCreated": [TagOut(**t) for t in recently_created]
+        "recentlyCreated": recently_created,
     }
 
 
@@ -116,43 +109,46 @@ async def search_tags(
     limit: int = Query(10, ge=1, le=100),
 ):
     """搜索标签"""
-    items = [t for t in tags_store.values() if query.lower() in t["name"].lower()]
-    items = sorted(items, key=lambda x: x["usageCount"], reverse=True)[:limit]
-    return [TagOut(**t) for t in items]
+    tags, _ = tag_store.list_all(search=query)
+    # 按使用次数排序，取前 limit 个
+    tags_sorted = sorted(tags, key=lambda t: t.usage_count or 0, reverse=True)[:limit]
+    return [_tag_to_out(t) for t in tags_sorted]
 
 
 @router.get("/tags/{tag_id}", response_model=TagOut)
 async def get_tag(tag_id: str):
     """获取单个标签"""
-    if tag_id not in tags_store:
+    tag = tag_store.get_by_id(tag_id)
+    if tag is None:
         raise HTTPException(status_code=404, detail="标签不存在")
-    return TagOut(**tags_store[tag_id])
+    return _tag_to_out(tag)
 
 
 @router.put("/tags/{tag_id}", response_model=TagOut)
 async def update_tag(tag_id: str, body: TagUpdate):
     """更新标签"""
-    if tag_id not in tags_store:
+    try:
+        tag = tag_store.update(
+            tag_id,
+            name=body.name,
+            description=body.description,
+            color=body.color,
+        )
+    except TagNotFoundError:
         raise HTTPException(status_code=404, detail="标签不存在")
-    
-    tag = tags_store[tag_id]
-    if body.name is not None:
-        tag["name"] = body.name
-    if body.description is not None:
-        tag["description"] = body.description
-    if body.color is not None:
-        tag["color"] = body.color
-    tag["updatedAt"] = datetime.now().isoformat()
-    
-    return TagOut(**tag)
+    except TagAlreadyExistsError:
+        raise HTTPException(status_code=409, detail="标签已存在")
+
+    return _tag_to_out(tag)
 
 
 @router.delete("/tags/{tag_id}")
 async def delete_tag(tag_id: str):
     """删除标签"""
-    if tag_id not in tags_store:
+    try:
+        tag_store.delete(tag_id)
+    except TagNotFoundError:
         raise HTTPException(status_code=404, detail="标签不存在")
-    del tags_store[tag_id]
     return {"detail": "已删除"}
 
 
@@ -163,7 +159,8 @@ async def get_tagged_documents(
     pageSize: int = Query(10, ge=1, le=100),
 ):
     """获取标签下的文档"""
-    if tag_id not in tags_store:
+    # 目前仅校验标签是否存在，文档关联由文档存储模块维护
+    if tag_store.get_by_id(tag_id) is None:
         raise HTTPException(status_code=404, detail="标签不存在")
     
     return {
@@ -173,3 +170,20 @@ async def get_tagged_documents(
         "pageSize": pageSize,
         "totalPages": 0,
     }
+
+
+def _tag_to_out(tag: Tag) -> TagOut:
+    """将 ORM Tag 模型转换为响应对象。"""
+
+    created_at = tag.created_at.isoformat() if getattr(tag, "created_at", None) else ""
+    updated_at = tag.updated_at.isoformat() if getattr(tag, "updated_at", None) else ""
+
+    return TagOut(
+        id=tag.id,
+        name=tag.name,
+        description=tag.description or "",
+        color=tag.color or "#409EFF",
+        usageCount=tag.usage_count or 0,
+        createdAt=created_at,
+        updatedAt=updated_at,
+    )
