@@ -69,12 +69,33 @@ npm run dev
 ## 开发环境要求
 
 ### 后端
-- Python 3.8+
-- 依赖包：`pip install -r qms-nexus/requirements.txt`
+- Python 3.10+
+- 核心依赖版本：
+  - fastapi>=0.109.0
+  - uvicorn[standard]>=0.27.0
+  - pydantic>=2.5.0
+  - pydantic-settings>=2.0.0
+  - redis>=5.0.0
+  - chromadb>=1.5.0
+  - arq>=0.25.0
+  - prometheus_client>=0.24.0
+- 安装依赖：`pip install -r qms-nexus/requirements.txt`
 
 ### 前端
-- Node.js 20+
-- 依赖包：`cd qms-nexus-frontend && npm install`
+- Node.js 16+
+- 核心依赖版本：
+  - tailwindcss@3.4.0
+  - postcss@8.4.38
+  - autoprefixer@10.4.19
+  - vue@^3.5.27
+  - element-plus@^2.13.2
+- 安装依赖：`cd qms-nexus-frontend && npm install`
+
+### 版本兼容性说明
+- Tailwind CSS 必须使用 3.4.0 版本，避免 PostCSS 插件冲突
+- PostCSS 必须使用 8.4.38 版本，与 Tailwind CSS 3.4.0 兼容
+- Pydantic 使用 v2 版本，需要安装 pydantic-settings
+- 后续开发和部署必须严格按照以上版本要求执行
 
 ## 常见问题
 

@@ -9,6 +9,36 @@
 - Node.js 16+
 - Docker（用于运行 Redis）
 
+### 依赖版本要求
+
+#### 后端依赖
+- fastapi>=0.109.0
+- uvicorn[standard]>=0.27.0
+- pydantic>=2.5.0
+- pydantic-settings>=2.0.0
+- python-multipart>=0.0.9
+- jinja2>=3.1.0
+- pyyaml>=6.0
+- python-dotenv>=1.0.0
+- redis>=5.0.0
+- chromadb>=1.5.0
+- arq>=0.25.0
+- prometheus_client>=0.24.0
+
+#### 前端依赖
+- tailwindcss@3.4.0
+- postcss@8.4.38
+- autoprefixer@10.4.19
+- vue@^3.5.27
+- element-plus@^2.13.2
+
+### 版本兼容性说明
+- **Tailwind CSS**：必须使用 3.4.0 版本，避免 PostCSS 插件冲突
+- **PostCSS**：必须使用 8.4.38 版本，与 Tailwind CSS 3.4.0 兼容
+- **Pydantic**：使用 v2 版本，需要安装 pydantic-settings
+
+后续开发和部署必须严格按照以上版本要求执行，以确保系统的稳定性和兼容性。
+
 ### 启动步骤
 
 ```bash

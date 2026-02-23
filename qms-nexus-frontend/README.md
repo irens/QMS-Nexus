@@ -8,9 +8,23 @@
 - **状态管理**: Pinia
 - **路由**: Vue Router 4
 - **UI组件库**: Element Plus
-- **样式**: TailwindCSS
+- **样式**: TailwindCSS 3.4.0
 - **构建工具**: Vite
 - **代码规范**: ESLint + Prettier
+
+## 版本要求
+
+### 核心依赖版本
+- **tailwindcss**: 3.4.0
+- **postcss**: 8.4.38
+- **autoprefixer**: 10.4.19
+- **vue**: ^3.5.27
+- **element-plus**: ^2.13.2
+
+### 版本兼容性说明
+- Tailwind CSS 必须使用 3.4.0 版本，避免 PostCSS 插件冲突
+- PostCSS 必须使用 8.4.38 版本，与 Tailwind CSS 3.4.0 兼容
+- 后续开发和部署必须严格按照以上版本要求执行
 
 ## 项目特色
 
