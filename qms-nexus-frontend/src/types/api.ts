@@ -248,7 +248,7 @@ export enum LogStatus {
 export interface UploadFile {
   id: string
   file: File
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed'
+  status: 'Pending' | 'Uploading' | 'Processing' | 'Completed' | 'Failed'
   progress: number
   taskId?: string
   error?: string

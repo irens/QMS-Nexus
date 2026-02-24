@@ -12,6 +12,7 @@ from core.config import settings
 from core.document_store import DocumentNotFoundError, document_store
 from core.logger import get_logger
 from core.vectordb import VectorDBClient
+from core.database import DocumentVersion, db_manager
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -34,6 +35,21 @@ class DocumentUpdate(BaseModel):
     metadata: Optional[dict] = None
 
 
+class DocumentVersionOut(BaseModel):
+    """文档版本信息输出模型"""
+    id: str
+    versionNumber: int
+    versionLabel: Optional[str]
+    status: str
+    effectiveDate: Optional[str] = None
+    reviewDate: Optional[str] = None
+    previousVersionId: Optional[str] = None
+    changeSummary: Optional[str] = None
+    preparedBy: Optional[str] = None
+    approvedBy: Optional[str] = None
+    approvedDate: Optional[str] = None
+
+
 class DocumentOut(BaseModel):
     id: str
     filename: str
@@ -46,6 +62,7 @@ class DocumentOut(BaseModel):
     chunksCount: Optional[int] = None
     parseTime: Optional[float] = None
     errorMessage: Optional[str] = None
+    currentVersion: Optional[DocumentVersionOut] = None
 
 
 class DocumentListResponse(BaseModel):
@@ -95,6 +112,7 @@ async def list_documents(
     endDate: Optional[str] = None,
     sortBy: str = Query("uploadTime", pattern="^(uploadTime|fileName|fileSize)$"),
     sortOrder: str = Query("desc", pattern="^(asc|desc)$"),
+    includeVersion: bool = Query(True, description="是否包含当前版本信息"),
 ):
     """获取文档列表，支持分页、搜索和筛选"""
     # 解析时间范围
@@ -120,6 +138,7 @@ async def list_documents(
         end_date=end_dt,
         sort_by=sortBy,
         sort_order=sortOrder,
+        include_version=includeVersion,
     )
 
     total_pages = (total + pageSize - 1) // pageSize if pageSize else 1
@@ -337,6 +356,26 @@ async def batch_update_tags(body: BatchUpdateTagsRequest):
     }
 
 
+def _version_to_out(version: Optional[DocumentVersion]) -> Optional[DocumentVersionOut]:
+    """将 ORM DocumentVersion 模型转换为响应对象。"""
+    if version is None:
+        return None
+    
+    return DocumentVersionOut(
+        id=version.id,
+        versionNumber=version.version_number,
+        versionLabel=version.version_label,
+        status=version.status,
+        effectiveDate=version.effective_date.isoformat() if version.effective_date else None,
+        reviewDate=version.review_date.isoformat() if version.review_date else None,
+        previousVersionId=version.previous_version_id,
+        changeSummary=version.change_summary,
+        preparedBy=version.prepared_by,
+        approvedBy=version.approved_by,
+        approvedDate=version.approved_date.isoformat() if version.approved_date else None,
+    )
+
+
 def _document_to_out(doc) -> DocumentOut:
     """将 ORM Document 模型转换为响应对象。"""
 
@@ -351,6 +390,9 @@ def _document_to_out(doc) -> DocumentOut:
         metadata = {}
 
     tag_names = [t.name for t in getattr(doc, "tags", [])]
+    
+    # 获取当前版本信息
+    current_version = getattr(doc, "current_version", None)
 
     return DocumentOut(
         id=doc.id,
@@ -364,4 +406,5 @@ def _document_to_out(doc) -> DocumentOut:
         chunksCount=doc.chunks_count,
         parseTime=doc.parse_time,
         errorMessage=doc.error_message,
+        currentVersion=_version_to_out(current_version),
     )

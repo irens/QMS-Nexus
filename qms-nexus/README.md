@@ -58,6 +58,16 @@ pip install -r requirements.txt
 # docker-compose up -d redis
 
 # 3. 启动后端服务
+# 首先进入项目目录并激活虚拟环境
+cd D:\Projects\QMS-Nexus\qms-nexus
+.\venv\Scripts\Activate.ps1
+
+# 启动 Worker（后台任务处理，新终端窗口）
+python run_worker.py
+
+# 启动 API 服务（新终端窗口）
+cd D:\Projects\QMS-Nexus\qms-nexus
+.\venv\Scripts\Activate.ps1
 uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
 # 4. 启动前端（新终端）

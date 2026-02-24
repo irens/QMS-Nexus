@@ -41,12 +41,23 @@ class VectorDBClient:
             )
         return self._collections[collection_name]
 
-    async def upsert_chunks(self, chunks: List[Chunk], collection: str = "qms_docs") -> List[str]:
-        """批量写入或更新 chunks 到指定知识库，返回 ids。"""
+    async def upsert_chunks(
+        self,
+        chunks: List[Chunk],
+        collection: str = "qms_docs",
+        version_metadata: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        """批量写入或更新 chunks 到指定知识库，返回 ids。
+
+        Args:
+            chunks: 文本块列表
+            collection: 知识库名称
+            version_metadata: 版本元数据，包含 version_id, version_number, version_label, status, effective_date, is_latest 等
+        """
         coll = self._get_collection(collection)
         ids = [c.id or str(uuid.uuid4()) for c in chunks]
         texts = [c.text for c in chunks]
-        
+
         def _build_meta(c: Chunk) -> dict:
             meta = {
                 "filename": c.metadata.get("filename"),
@@ -58,6 +69,16 @@ class VectorDBClient:
             tags = c.metadata.get("tags")
             if tags:
                 meta["tags"] = tags
+
+            # 添加版本元数据（如果提供）
+            if version_metadata:
+                meta["version_id"] = version_metadata.get("version_id")
+                meta["version_number"] = version_metadata.get("version_number")
+                meta["version_label"] = version_metadata.get("version_label")
+                meta["status"] = version_metadata.get("status")
+                meta["effective_date"] = version_metadata.get("effective_date")
+                meta["is_latest"] = version_metadata.get("is_latest")
+
             return meta
 
         metas = [_build_meta(c) for c in chunks]
@@ -70,16 +91,35 @@ class VectorDBClient:
         top_k: int = 5,
         filter_tags: Optional[List[str]] = None,
         collection: str = "qms_docs",
+        version_filter: Optional[Dict[str, Any]] = None,
     ) -> List[SearchResult]:
-        """异步语义检索，支持标签过滤和知识库选择。"""
+        """异步语义检索，支持标签过滤、知识库选择和版本过滤。
+
+        Args:
+            query: 查询文本
+            top_k: 返回结果数量
+            filter_tags: 标签过滤
+            collection: 知识库名称
+            version_filter: 版本过滤条件，如 {"is_latest": True, "status": "effective"}
+        """
         coll = self._get_collection(collection)
-        where = None
+        where = {}
+
+        # 标签过滤
         if filter_tags:
-            # 单标签直接字段过滤；多标签用 $or
             if len(filter_tags) == 1:
-                where = {"tags": {"$contains": filter_tags[0]}}
+                where["tags"] = {"$contains": filter_tags[0]}
             else:
-                where = {"$or": [{"tags": {"$contains": tag}} for tag in filter_tags]}
+                where["$or"] = [{"tags": {"$contains": tag}} for tag in filter_tags]
+
+        # 版本过滤
+        if version_filter:
+            for key, value in version_filter.items():
+                where[key] = value
+
+        # 如果 where 为空，设为 None
+        if not where:
+            where = None
 
         res = coll.query(
             query_texts=[query],
@@ -90,15 +130,63 @@ class VectorDBClient:
         for doc, meta, score in zip(
             res["documents"][0], res["metadatas"][0], res["distances"][0]
         ):
+            # 构建来源信息，包含版本标签
+            version_label = meta.get("version_label")
+            version_info = f" {version_label}" if version_label else ""
+            source = f"[来源：{meta.get('filename')}{version_info}, 第{meta.get('page')}页]"
+
             results.append(
                 SearchResult(
                     text=doc,
                     score=1 - score,  # cosine → 相似度
-                    source=f"[来源：{meta.get('filename')}, 第{meta.get('page')}页]",
+                    source=source,
                     tags=meta.get("tags", []),
                     metadata=meta,
                 )
             )
+        return results
+
+    async def get_chunks_by_version(
+        self,
+        version_id: str,
+        collection: str = "qms_docs",
+    ) -> List[SearchResult]:
+        """获取指定版本的所有chunks。
+
+        Args:
+            version_id: 版本ID
+            collection: 知识库名称
+
+        Returns:
+            该版本的所有文本块列表
+        """
+        coll = self._get_collection(collection)
+        res = coll.get(
+            where={"version_id": version_id},
+            include=["documents", "metadatas"],
+        )
+
+        results = []
+        for doc_id, doc, meta in zip(
+            res["ids"], res["documents"], res["metadatas"]
+        ):
+            # 构建来源信息
+            version_label = meta.get("version_label")
+            version_info = f" {version_label}" if version_label else ""
+            source = f"[来源：{meta.get('filename')}{version_info}, 第{meta.get('page')}页]"
+
+            results.append(
+                SearchResult(
+                    text=doc,
+                    score=1.0,  # 直接获取的chunks默认分数为1.0
+                    source=source,
+                    tags=meta.get("tags", []),
+                    metadata={**meta, "chunk_id": doc_id},
+                )
+            )
+
+        # 按页码排序
+        results.sort(key=lambda x: x.metadata.get("page", 0))
         return results
 
     async def delete_by_filename(self, filename: str, collection: str = "qms_docs") -> int:

@@ -7,7 +7,7 @@ import { uploadService } from '@/services/upload'
 export interface UploadFile {
   id: string
   file: File
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed'
+  status: 'Pending' | 'Uploading' | 'Processing' | 'Completed' | 'Failed'
   progress: number
   taskId?: string
   error?: string
@@ -74,17 +74,17 @@ export const useUploadStore = defineStore('upload', () => {
   }, { deep: true })
   
   const pendingUploads = computed(() => 
-    uploadQueue.value.filter(file => file.status === 'pending')
+    uploadQueue.value.filter(file => file.status === 'Pending')
   )
   
   const activeUploads = computed(() => 
     uploadQueue.value.filter(file => 
-      file.status === 'uploading' || file.status === 'processing'
+      file.status === 'Uploading' || file.status === 'Processing'
     )
   )
   
   const failedUploads = computed(() => 
-    uploadQueue.value.filter(file => file.status === 'failed')
+    uploadQueue.value.filter(file => file.status === 'Failed')
   )
   
   const completedUploadsList = computed(() => completedUploads.value)
@@ -106,7 +106,7 @@ export const useUploadStore = defineStore('upload', () => {
     const uploadFiles: UploadFile[] = files.map(file => ({
       id: generateFileId(),
       file,
-      status: 'pending' as const,
+      status: 'Pending' as const,
       progress: 0,
       retryCount: 0
     }))
@@ -157,13 +157,13 @@ export const useUploadStore = defineStore('upload', () => {
   const uploadingFileIds = new Set<string>()
   
   async function uploadFile(uploadFileItem: UploadFile): Promise<void> {
-    if (uploadFileItem.status !== 'pending') return
+    if (uploadFileItem.status !== 'Pending') return
     if (uploadingFileIds.has(uploadFileItem.id)) return
     
     uploadingFileIds.add(uploadFileItem.id)
     
     try {
-      uploadFileItem.status = 'uploading'
+      uploadFileItem.status = 'Uploading'
       currentUploads.value++
       
       const validation = uploadService.validateFile(uploadFileItem.file)
@@ -179,14 +179,14 @@ export const useUploadStore = defineStore('upload', () => {
       )
       
       uploadFileItem.taskId = task.taskId
-      uploadFileItem.status = 'processing'
-      uploadFileItem.progress = 100
+      uploadFileItem.status = 'Processing'
+      uploadFileItem.progress = 80  // 上传完成占80%，解析占20%
       uploadFileItem.currentStep = '正在解析文档...'
       
       await pollTaskStatus(uploadFileItem)
       
     } catch (err) {
-      uploadFileItem.status = 'failed'
+      uploadFileItem.status = 'Failed'
       uploadFileItem.error = err instanceof Error ? err.message : '上传失败'
       currentUploads.value--
       uploadingFileIds.delete(uploadFileItem.id)
@@ -207,19 +207,21 @@ export const useUploadStore = defineStore('upload', () => {
         (task) => {
           if (task.status === 'Processing') {
             uploadFileItem.currentStep = task.currentStep
-            uploadFileItem.progress = Math.max(90, task.progress)
+            // 解析阶段从80%到99%
+            const parseProgress = task.progress || 0
+            uploadFileItem.progress = 80 + Math.min(19, parseProgress * 0.19)
           }
         }
       )
       
-      uploadFileItem.status = 'completed'
+      uploadFileItem.status = 'Completed'
       uploadFileItem.result = result.result
       uploadFileItem.currentStep = '文档处理完成'
       
       moveToCompleted(uploadFileItem)
       
     } catch (err) {
-      uploadFileItem.status = 'failed'
+      uploadFileItem.status = 'Failed'
       uploadFileItem.error = err instanceof Error ? err.message : '处理失败'
       
       const currentRetryCount = uploadFileItem.retryCount || 0
@@ -228,7 +230,7 @@ export const useUploadStore = defineStore('upload', () => {
       }
     } finally {
       currentUploads.value--
-      if (uploadFileItem.status !== 'pending') {
+      if (uploadFileItem.status !== 'Pending') {
         uploadingFileIds.delete(uploadFileItem.id)
       }
     }
@@ -239,12 +241,12 @@ export const useUploadStore = defineStore('upload', () => {
     const maxRetries = retryCount.value
     
     if (currentRetryCount >= maxRetries) {
-      uploadFileItem.status = 'failed'
+      uploadFileItem.status = 'Failed'
       uploadFileItem.error = `上传失败，已达到最大重试次数 (${maxRetries})`
       return
     }
     
-    uploadFileItem.status = 'pending'
+    uploadFileItem.status = 'Pending'
     uploadFileItem.progress = 0
     uploadFileItem.error = undefined
     uploadFileItem.currentStep = undefined
@@ -288,10 +290,10 @@ export const useUploadStore = defineStore('upload', () => {
     const uploadFileItem = uploadQueue.value.find(file => file.id === fileId)
     if (!uploadFileItem) return
     
-    if (uploadFileItem.status === 'pending' || uploadFileItem.status === 'uploading') {
-      const wasUploading = uploadFileItem.status === 'uploading'
+    if (uploadFileItem.status === 'Pending' || uploadFileItem.status === 'Uploading') {
+      const wasUploading = uploadFileItem.status === 'Uploading'
       
-      uploadFileItem.status = 'failed'
+      uploadFileItem.status = 'Failed'
       uploadFileItem.error = '用户取消上传'
       uploadFileItem.progress = 0
       
@@ -303,7 +305,7 @@ export const useUploadStore = defineStore('upload', () => {
   
   function retryFailedUploads(): void {
     failedUploads.value.forEach(file => {
-      file.status = 'pending'
+      file.status = 'Pending'
       file.error = undefined
       file.progress = 0
     })
@@ -333,7 +335,7 @@ export const useUploadStore = defineStore('upload', () => {
   }
   
   function clearFailedUploads(): void {
-    uploadQueue.value = uploadQueue.value.filter(file => file.status !== 'failed')
+    uploadQueue.value = uploadQueue.value.filter(file => file.status !== 'Failed')
   }
   
   function clearAllUploads(): void {
@@ -349,10 +351,10 @@ export const useUploadStore = defineStore('upload', () => {
     currentUploads.value = 0
     uploadingFileIds.clear()
 
-    // 将正在上传或处理的文件重置为 pending 状态
+    // 将正在上传或处理的文件重置为 Pending 状态
     uploadQueue.value.forEach(file => {
-      if (file.status === 'uploading' || file.status === 'processing') {
-        file.status = 'pending'
+      if (file.status === 'Uploading' || file.status === 'Processing') {
+        file.status = 'Pending'
         file.progress = 0
         file.currentStep = undefined
         file.error = undefined

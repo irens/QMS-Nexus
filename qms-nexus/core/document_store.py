@@ -97,9 +97,13 @@ class DocumentStore:
         end_date: Optional[datetime] = None,
         sort_by: str = "uploadTime",
         sort_order: str = "desc",
+        include_version: bool = True,
     ) -> Tuple[List[Document], int]:
         """
         复杂查询文档列表，支持过滤、排序和分页。
+
+        Args:
+            include_version: 是否联表查询当前版本信息
 
         返回 (items, total)。
         """
@@ -151,7 +155,12 @@ class DocumentStore:
             offset = (page - 1) * page_size
             stmt = stmt.offset(offset).limit(page_size)
 
-            items = list(session.execute(stmt).scalars())
+            # 如果需要版本信息，使用 joinedload 预加载
+            if include_version:
+                from sqlalchemy.orm import joinedload
+                stmt = stmt.options(joinedload(Document.current_version))
+
+            items = list(session.execute(stmt).scalars().unique())
             return items, int(total)
 
     def update_status_batch(self, document_ids: Sequence[str], status: str) -> Tuple[int, List[str]]:

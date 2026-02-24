@@ -6,6 +6,22 @@ export interface AskRequest {
   question: string
   collection?: string
   skip_correction?: boolean
+  version_strategy?: 'latest_effective' | 'specific_date' | 'all_versions'
+  specific_date?: string
+  include_version_info?: boolean
+}
+
+export interface Source {
+  document_name: string
+  version_id: string
+  version_number: number
+  version_label: string
+  status: 'draft' | 'review' | 'approved' | 'effective' | 'obsolete'
+  is_latest: boolean
+  effective_date?: string
+  page: number
+  score: number
+  warning?: string
 }
 
 export interface AskResponse {
@@ -13,6 +29,8 @@ export interface AskResponse {
   sources: string[]
   is_corrected?: boolean
   correction_id?: number
+  version_info_included?: boolean
+  version_sources?: Source[]
 }
 
 export interface AskWithCorrectionRequest {
@@ -47,16 +65,22 @@ export class ChatService {
     options?: {
       collection?: string
       skipCorrection?: boolean
+      versionStrategy?: 'latest_effective' | 'specific_date' | 'all_versions'
+      specificDate?: string
+      includeVersionInfo?: boolean
     }
   ): Promise<AskResponse> {
     const collection = options?.collection || knowledgeBaseService.getCurrentCollection()
-    
+
     const request: AskRequest = {
       question,
       collection,
-      skip_correction: options?.skipCorrection || false
+      skip_correction: options?.skipCorrection || false,
+      version_strategy: options?.versionStrategy || 'latest_effective',
+      specific_date: options?.specificDate,
+      include_version_info: options?.includeVersionInfo ?? true
     }
-    
+
     return apiClient.post<AskResponse>('/ask', request)
   }
 
@@ -143,6 +167,142 @@ export class ChatService {
       history.shift()
     }
     this.saveChatHistory(history)
+  }
+
+  /**
+   * 流式问答请求
+   * @param question - 用户问题
+   * @param onChunk - 接收到数据块的回调
+   * @param options - 可选参数
+   * @returns 问答响应
+   */
+  async askQuestionStream(
+    question: string,
+    onChunk: (chunk: string) => void,
+    options?: {
+      collection?: string
+      skipCorrection?: boolean
+      versionStrategy?: 'latest_effective' | 'specific_date' | 'all_versions'
+      specificDate?: string
+      includeVersionInfo?: boolean
+    }
+  ): Promise<AskResponse> {
+    const collection = options?.collection || knowledgeBaseService.getCurrentCollection()
+
+    const request: AskRequest = {
+      question,
+      collection,
+      skip_correction: options?.skipCorrection || false,
+      version_strategy: options?.versionStrategy || 'latest_effective',
+      specific_date: options?.specificDate,
+      include_version_info: options?.includeVersionInfo ?? true
+    }
+
+    // 使用 fetch API 进行 SSE 流式请求
+    const response = await fetch(`${apiClient.getBaseUrl()}/ask/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request)
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+    let fullResponse = ''
+    let finalData: AskResponse | null = null
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              break
+            }
+            try {
+              const parsed = JSON.parse(data)
+              if (parsed.chunk) {
+                fullResponse += parsed.chunk
+                onChunk(parsed.chunk)
+              } else if (parsed.answer) {
+                // 最终响应包含完整数据
+                finalData = parsed as AskResponse
+              }
+            } catch (e) {
+              // 忽略解析错误
+            }
+          }
+        }
+      }
+    }
+
+    return finalData || {
+      answer: fullResponse,
+      sources: []
+    }
+  }
+
+  /**
+   * 对比两个文档版本
+   * @param documentId - 文档ID
+   * @param v1Id - 版本1 ID
+   * @param v2Id - 版本2 ID
+   * @returns 版本对比结果
+   */
+  async compareVersions(
+    documentId: string,
+    v1Id: string,
+    v2Id: string
+  ): Promise<{
+    summary: string
+    added_sections: string[]
+    removed_sections: string[]
+    modified_sections: string[]
+    key_changes: string[]
+    v1_info: {
+      version_id: string
+      version_label: string
+      version_number: number
+      status: string
+      change_summary?: string
+    }
+    v2_info: {
+      version_id: string
+      version_label: string
+      version_number: number
+      status: string
+      change_summary?: string
+    }
+  }> {
+    return apiClient.get(`/documents/versions/${v1Id}/compare/${v2Id}`)
+  }
+
+  /**
+   * 记录错误日志
+   * @param errorInfo - 错误信息
+   */
+  async logError(errorInfo: {
+    error: string
+    stack?: string
+    component: string
+    info: string
+  }): Promise<void> {
+    try {
+      await apiClient.post('/logs/error', errorInfo)
+    } catch (e) {
+      console.error('Failed to log error:', e)
+    }
   }
 }
 

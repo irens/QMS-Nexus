@@ -190,7 +190,7 @@ class ApiClient {
     const response = await this.instance.get(url, {
       responseType: 'blob'
     })
-    
+
     const blob = new Blob([response.data])
     const downloadUrl = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -200,6 +200,13 @@ class ApiClient {
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(downloadUrl)
+  }
+
+  /**
+   * 获取基础URL
+   */
+  getBaseUrl(): string {
+    return API_CONFIG.BASE_URL
   }
 }
 

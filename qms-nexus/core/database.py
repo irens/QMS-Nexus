@@ -47,7 +47,7 @@ class Tag(Base, TimestampMixin):
 
 
 class Document(Base, TimestampMixin):
-    """文档元数据表"""
+    """文档元数据表 - 作为文档组信息表"""
     __tablename__ = 'documents'
     
     id = Column(String(36), primary_key=True)
@@ -62,9 +62,13 @@ class Document(Base, TimestampMixin):
     error_message = Column(Text)
     kb_id = Column(String(36), ForeignKey('knowledge_bases.id'), default='default')
     
+    # 版本管理字段
+    current_version_id = Column(String(36), ForeignKey('document_versions.id'), nullable=True)
+    
     # 关系
     kb = relationship("KnowledgeBase", back_populates="documents")
     tags = relationship("Tag", secondary='document_tags', back_populates="documents")
+    current_version = relationship("DocumentVersion")
 
 
 class DocumentTag(Base):
@@ -211,6 +215,115 @@ class ApiCallStat(Base):
     __table_args__ = (
         Index('idx_api_stats_created', 'created_at'),
         Index('idx_api_stats_key', 'api_key_id'),
+    )
+
+
+class DocumentVersion(Base, TimestampMixin):
+    """文档版本表 - 存储文档的所有版本信息"""
+    __tablename__ = 'document_versions'
+    
+    # 主键
+    id = Column(String(36), primary_key=True)
+    
+    # 文档组标识
+    document_id = Column(String(36), nullable=False, index=True)
+    
+    # 版本信息
+    version_number = Column(Integer, nullable=False)
+    version_label = Column(String(50))
+    
+    # 文件信息
+    filename = Column(String(255), nullable=False)
+    file_hash = Column(String(64), nullable=False, index=True)
+    file_size = Column(Integer)
+    file_type = Column(String(50))
+    
+    # 版本状态（核心）
+    status = Column(String(20), nullable=False, default='draft')
+    
+    # 内容元数据
+    title = Column(Text)
+    description = Column(Text)
+    doc_type = Column(String(50))
+    doc_code = Column(String(50))
+    
+    # 变更记录
+    change_summary = Column(Text)
+    change_details = Column(Text)
+    previous_version_id = Column(String(36), ForeignKey('document_versions.id'), nullable=True)
+    
+    # 时间控制
+    effective_date = Column(DateTime)
+    review_date = Column(DateTime)
+    
+    # 标识位
+    is_latest = Column(Boolean, default=False)
+    
+    # 审批信息（电子签名）
+    prepared_by = Column(String(50))
+    reviewed_by = Column(String(50))
+    approved_by = Column(String(50))
+    approved_date = Column(DateTime)
+    
+    # 知识库关联
+    kb_id = Column(String(36), ForeignKey('knowledge_bases.id'), default='default')
+    
+    # 审计字段（TimestampMixin 已包含 created_at, updated_at）
+    created_by = Column(String(36))
+    
+    # 关系
+    kb = relationship("KnowledgeBase")
+    previous_version = relationship("DocumentVersion", remote_side=[id], backref="next_versions")
+    
+    __table_args__ = (
+        UniqueConstraint('document_id', 'version_number', name='uix_doc_version'),
+        Index('idx_doc_ver_status', 'status'),
+        Index('idx_doc_ver_effective_date', 'effective_date'),
+        Index('idx_doc_ver_kb_latest', 'kb_id', 'is_latest'),
+        Index('idx_doc_ver_file_hash', 'file_hash'),
+    )
+
+
+class DocumentApprovalHistory(Base):
+    """文档审批历史表 - 记录所有审批操作，满足审计要求"""
+    __tablename__ = 'document_approval_history'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_version_id = Column(String(36), ForeignKey('document_versions.id'), nullable=False)
+    action = Column(String(20), nullable=False)
+    action_by = Column(String(50), nullable=False)
+    action_at = Column(DateTime, default=datetime.utcnow)
+    comment = Column(Text)
+    from_status = Column(String(20))
+    to_status = Column(String(20))
+    
+    # 关系
+    document_version = relationship("DocumentVersion")
+    
+    __table_args__ = (
+        Index('idx_approval_history_version', 'document_version_id'),
+        Index('idx_approval_history_action_at', 'action_at'),
+    )
+
+
+class DocumentDistribution(Base):
+    """文档分发/培训记录表 - 管理新版本的培训确认"""
+    __tablename__ = 'document_distribution'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_version_id = Column(String(36), ForeignKey('document_versions.id'), nullable=False)
+    user_id = Column(String(36), nullable=False)
+    distribution_type = Column(String(20), default='read')
+    status = Column(String(20), default='pending')
+    distributed_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+    
+    # 关系
+    document_version = relationship("DocumentVersion")
+    
+    __table_args__ = (
+        Index('idx_distribution_version', 'document_version_id'),
+        Index('idx_distribution_user', 'user_id'),
     )
 
 

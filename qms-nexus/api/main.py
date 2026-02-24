@@ -19,6 +19,7 @@ from api.routes.auth import router as auth_router
 from api.routes.knowledge_base import router as kb_router
 from api.routes.documents import router as documents_router
 from api.routes.chat import router as chat_router
+from api.routes.document_versions import router as document_versions_router
 from core.rag_service import RAGService
 from core.logger import get_logger
 from core.cache import check_redis_connection
@@ -108,6 +109,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(kb_router, prefix="/api/v1")
 app.include_router(documents_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
+app.include_router(document_versions_router, prefix="/api/v1/documents")
 
 rag = RAGService()
 

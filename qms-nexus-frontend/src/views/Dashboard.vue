@@ -11,8 +11,10 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm text-gray-600 mb-1">总文档数</p>
-            <p class="text-2xl font-bold text-gray-800">1,234</p>
-            <p class="text-xs text-green-600 mt-1">↑ 12% 较上月</p>
+            <p class="text-2xl font-bold text-gray-800">{{ stats.totalDocuments.toLocaleString() }}</p>
+            <p class="text-xs mt-1" :class="stats.growthRate.documents > 0 ? 'text-green-600' : 'text-gray-400'">
+              {{ stats.growthRate.documents > 0 ? `↑ ${stats.growthRate.documents}% 较上月` : '暂无变化' }}
+            </p>
           </div>
           <div class="p-3 bg-blue-100 rounded-full">
             <el-icon size="24" class="text-blue-600">
@@ -26,8 +28,10 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm text-gray-600 mb-1">已解析文档</p>
-            <p class="text-2xl font-bold text-gray-800">987</p>
-            <p class="text-xs text-green-600 mt-1">↑ 8% 较上月</p>
+            <p class="text-2xl font-bold text-gray-800">{{ stats.parsedDocuments.toLocaleString() }}</p>
+            <p class="text-xs text-gray-400 mt-1">
+              {{ stats.totalDocuments > 0 ? `解析率 ${Math.round(stats.parsedDocuments / stats.totalDocuments * 100)}%` : '暂无数据' }}
+            </p>
           </div>
           <div class="p-3 bg-green-100 rounded-full">
             <el-icon size="24" class="text-green-600">
@@ -41,8 +45,10 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm text-gray-600 mb-1">问答次数</p>
-            <p class="text-2xl font-bold text-gray-800">5,678</p>
-            <p class="text-xs text-green-600 mt-1">↑ 15% 较上月</p>
+            <p class="text-2xl font-bold text-gray-800">{{ stats.totalChats.toLocaleString() }}</p>
+            <p class="text-xs mt-1" :class="stats.growthRate.chats > 0 ? 'text-green-600' : 'text-gray-400'">
+              {{ stats.growthRate.chats > 0 ? `↑ ${stats.growthRate.chats}% 较上月` : '暂无变化' }}
+            </p>
           </div>
           <div class="p-3 bg-purple-100 rounded-full">
             <el-icon size="24" class="text-purple-600">
@@ -56,8 +62,8 @@
         <div class="flex items-center justify-between">
           <div>
             <p class="text-sm text-gray-600 mb-1">活跃用户</p>
-            <p class="text-2xl font-bold text-gray-800">156</p>
-            <p class="text-xs text-green-600 mt-1">↑ 5% 较上月</p>
+            <p class="text-2xl font-bold text-gray-800">{{ stats.activeUsers.toLocaleString() }}</p>
+            <p class="text-xs text-gray-400 mt-1">累计活跃用户</p>
           </div>
           <div class="p-3 bg-orange-100 rounded-full">
             <el-icon size="24" class="text-orange-600">
@@ -175,7 +181,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import axios from 'axios'
 import {
   Document,
   CircleCheck,
@@ -188,6 +195,7 @@ import {
   Tickets,
   Notebook
 } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 interface DocumentItem {
   id: string
@@ -204,6 +212,51 @@ interface ChatItem {
   answer: string
   time: string
 }
+
+interface Stats {
+  totalDocuments: number
+  parsedDocuments: number
+  totalChats: number
+  activeUsers: number
+  growthRate: {
+    documents: number
+    chats: number
+  }
+}
+
+// 统计数据
+const stats = ref<Stats>({
+  totalDocuments: 0,
+  parsedDocuments: 0,
+  totalChats: 0,
+  activeUsers: 0,
+  growthRate: {
+    documents: 0,
+    chats: 0
+  }
+})
+
+// 获取统计数据
+const fetchStats = async () => {
+  try {
+    const response = await axios.get('/api/v1/stats')
+    stats.value = {
+      totalDocuments: response.data.totalDocuments || 0,
+      parsedDocuments: response.data.parsedDocuments || 0,
+      totalChats: response.data.totalChats || 0,
+      activeUsers: response.data.activeUsers || 0,
+      growthRate: response.data.growthRate || { documents: 0, chats: 0 }
+    }
+  } catch (error) {
+    console.error('获取统计数据失败:', error)
+    ElMessage.warning('获取统计数据失败，请检查后端服务')
+  }
+}
+
+// 组件挂载时获取数据
+onMounted(() => {
+  fetchStats()
+})
 
 // 模拟数据
 const recentDocuments = ref<DocumentItem[]>([

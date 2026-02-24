@@ -200,6 +200,9 @@ async def get_system_logs(
 @router.get("/stats")
 async def get_system_stats():
     """获取系统统计信息"""
+    from core.database import Document, ChatLog, db_manager
+    from sqlalchemy import func
+    
     if PSUTIL_AVAILABLE and psutil:
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
@@ -225,13 +228,73 @@ async def get_system_stats():
             "percentage": 20.0
         }
     
+    # 从数据库获取真实统计数据
+    try:
+        with db_manager.get_session() as session:
+            # 总文档数
+            total_documents = session.query(func.count(Document.id)).scalar() or 0
+            
+            # 已解析文档数（状态为 Completed）
+            parsed_documents = session.query(func.count(Document.id)).filter(
+                Document.status == 'Completed'
+            ).scalar() or 0
+            
+            # 问答次数
+            total_chats = session.query(func.count(ChatLog.id)).scalar() or 0
+            
+            # 活跃用户数（不同的 user_id）
+            active_users = session.query(func.count(func.distinct(ChatLog.user_id))).filter(
+                ChatLog.user_id.isnot(None)
+            ).scalar() or 0
+            
+            # 上月数据（用于计算增长率）
+            from datetime import timedelta
+            last_month = datetime.utcnow() - timedelta(days=30)
+            
+            # 上月文档数
+            last_month_docs = session.query(func.count(Document.id)).filter(
+                Document.created_at >= last_month
+            ).scalar() or 0
+            
+            # 上月问答次数
+            last_month_chats = session.query(func.count(ChatLog.id)).filter(
+                ChatLog.created_at >= last_month
+            ).scalar() or 0
+            
+            # 计算增长率
+            if total_documents > 0:
+                doc_growth = round((last_month_docs / total_documents) * 100, 1) if last_month_docs > 0 else 0
+            else:
+                doc_growth = 0
+                
+            if total_chats > 0:
+                chat_growth = round((last_month_chats / total_chats) * 100, 1) if last_month_chats > 0 else 0
+            else:
+                chat_growth = 0
+            
+    except Exception as e:
+        logger.error(f"获取统计数据失败: {e}")
+        total_documents = 0
+        parsed_documents = 0
+        total_chats = 0
+        active_users = 0
+        doc_growth = 0
+        chat_growth = 0
+    
     return {
-        "totalDocuments": 42,
-        "totalUsers": 5,
-        "totalApiKeys": 2,
+        "totalDocuments": total_documents,
+        "parsedDocuments": parsed_documents,
+        "totalChats": total_chats,
+        "activeUsers": active_users,
+        "totalUsers": active_users,
+        "totalApiKeys": 0,
         "systemUptime": f"{int((time.time() - start_time) // 3600)}小时",
         "memoryUsage": memory_usage,
-        "diskUsage": disk_usage
+        "diskUsage": disk_usage,
+        "growthRate": {
+            "documents": doc_growth,
+            "chats": chat_growth
+        }
     }
 
 # 允许重启的服务列表
